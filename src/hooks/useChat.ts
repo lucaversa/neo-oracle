@@ -33,37 +33,25 @@ export function useChat(userId?: string): UseChatReturn {
     const loadActiveSessions = async () => {
         try {
             console.log('Carregando sessões ativas...');
-
-            // Buscar todas as sessões e agrupá-las manualmente
             const { data, error } = await supabase
                 .from('n8n_chat_histories')
                 .select('session_id');
-
             if (error) {
                 console.error('Erro ao carregar sessões:', error);
                 return [];
             }
-
             if (!data || !Array.isArray(data) || data.length === 0) {
                 console.log('Nenhuma sessão encontrada');
                 return [];
             }
-
-            // Criar um Set para armazenar sessionIds únicos
             const uniqueSessionIds = new Set<string>();
-
-            // Adicionar cada sessionId ao Set
             data.forEach(item => {
                 if (item && item.session_id) {
                     uniqueSessionIds.add(item.session_id);
                 }
             });
-
-            // Converter o Set para array
             const sessions = Array.from(uniqueSessionIds);
-
-            console.log(`Encontradas ${sessions.length} sessões únicas:`, sessions);
-
+            console.log('Sessões únicas encontradas:', sessions);  // LOG AQUI
             return sessions;
         } catch (err) {
             console.error('Erro ao carregar sessões:', err);
@@ -289,16 +277,16 @@ export function useChat(userId?: string): UseChatReturn {
         try {
             const newSessionId = uuidv4();
             console.log('Criando nova sessão:', newSessionId);
-
             setSessionId(newSessionId);
             setMessages([]);
             setIsProcessing(false);
             setSessionLimitReached(false);
             setError(null);
-
-            // Adicionar à lista de sessões ativas
-            setActiveSessions(prev => [newSessionId, ...prev]);
-
+            // Adicionar apenas se não existir
+            setActiveSessions(prev => {
+                if (prev.includes(newSessionId)) return prev;
+                return [newSessionId, ...prev];
+            });
             return newSessionId;
         } catch (err) {
             console.error('Erro ao criar nova sessão:', err);

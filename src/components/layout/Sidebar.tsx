@@ -158,6 +158,8 @@ export default function Sidebar({
     // Verificar se todas as sessões têm o mesmo ID
     const duplicateSessions = hasDuplicateSessions();
 
+    console.log('Sessões exibidas na sidebar:', activeSessions);
+
     return (
         <div style={sidebarStyle}>
             <div style={{

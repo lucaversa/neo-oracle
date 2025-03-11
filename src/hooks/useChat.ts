@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { v4 as uuidv4 } from 'uuid';
-import { ChatMessage, ChatHistoryEntry } from '@/types/chat';
+import { ChatMessage } from '@/types/chat';
 
 interface UseChatReturn {
     messages: ChatMessage[];
@@ -24,145 +24,173 @@ export function useChat(userId?: string): UseChatReturn {
     const [isProcessing, setIsProcessing] = useState<boolean>(false);
     const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-    // Carregar sessões quando o userId mudar
-    useEffect(() => {
-        if (userId) {
-            setLoading(true);
-            loadActiveSessions().then(sessions => {
-                if (sessions && sessions.length > 0) {
-                    setSessionId(sessions[0]);
-                } else {
-                    createNewSession();
-                }
-                setLoading(false);
-            }).catch(err => {
-                console.error('Erro ao carregar sessões:', err);
-                setLoading(false);
-            });
-        }
-    }, [userId]);
-
-    // Carregar mensagens e configurar polling quando o sessionId mudar
-    useEffect(() => {
-        if (sessionId) {
-            console.log('Sessão atual:', sessionId);
-            loadMessages(sessionId);
-
-            // Configurar polling
-            if (pollingIntervalRef.current) {
-                clearInterval(pollingIntervalRef.current);
-            }
-
-            pollingIntervalRef.current = setInterval(() => {
-                loadMessages(sessionId);
-
-                // Verificar se há novas mensagens do tipo 'ai' para desativar o indicador
-                if (isProcessing) {
-                    supabase
-                        .from('n8n_chat_histories')
-                        .select('*')
-                        .eq('session_id', sessionId)
-                        .order('id', { ascending: false })
-                        .limit(1)
-                        .then(({ data }) => {
-                            if (data && data.length > 0 && data[0].message.type === 'ai') {
-                                setIsProcessing(false);
-                            }
-                        });
-                }
-            }, 1000);
-
-            return () => {
-                if (pollingIntervalRef.current) {
-                    clearInterval(pollingIntervalRef.current);
-                }
-            };
-        }
-    }, [sessionId]);
-
-    // Função para carregar mensagens
-    const loadMessages = async (sid: string) => {
+    // Carregar sessões ativas únicas
+    const loadActiveSessions = async () => {
         try {
+            // Simplificando a consulta - apenas selecionar session_id sem ordenação
             const { data, error } = await supabase
                 .from('n8n_chat_histories')
-                .select('*')
-                .eq('session_id', sid)
-                .order('id', { ascending: true });
+                .select('session_id');
 
             if (error) {
-                console.error('Erro ao carregar mensagens:', error);
-                return;
+                console.error('Erro ao carregar sessões:', error);
+                return [];
             }
 
             if (data && data.length > 0) {
-                const allMessages = data.map(entry => entry.message);
-                setMessages(allMessages);
-            }
-        } catch (err) {
-            console.error('Erro ao carregar mensagens:', err);
-        }
-    };
-
-    // Carregar sessões ativas
-    const loadActiveSessions = async (): Promise<string[] | null> => {
-        try {
-            const { data, error } = await supabase
-                .from('n8n_chat_histories')
-                .select('session_id')
-                .order('id', { ascending: false });
-
-            if (error) throw error;
-
-            if (data && data.length > 0) {
-                const uniqueSessions = [...new Set(data.map(item => item.session_id))];
+                // Usar Set para obter sessões únicas
+                const sessionsSet = new Set(data.map(item => item.session_id));
+                const uniqueSessions = Array.from(sessionsSet);
+                console.log('Sessões carregadas:', uniqueSessions);
                 setActiveSessions(uniqueSessions);
                 return uniqueSessions;
             }
 
             return [];
         } catch (err) {
-            console.error('Erro ao carregar sessões:', err);
-            return null;
+            console.error('Erro na função loadActiveSessions:', err);
+            return [];
         }
     };
 
+    // Inicializar o hook
+    useEffect(() => {
+        if (!userId) return;
+
+        const init = async () => {
+            try {
+                setLoading(true);
+                const sessions = await loadActiveSessions();
+
+                if (sessions.length > 0) {
+                    // Utilizar a primeira sessão disponível
+                    setSessionId(sessions[0]);
+                } else {
+                    // Criar uma nova sessão se não existir nenhuma
+                    const newId = uuidv4();
+                    setSessionId(newId);
+                    setActiveSessions([newId]);
+                }
+            } catch (err) {
+                console.error('Erro na inicialização do chat:', err);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        init();
+
+        return () => {
+            if (pollingIntervalRef.current) {
+                clearInterval(pollingIntervalRef.current);
+            }
+        };
+    }, [userId]);
+
+    // Carregar mensagens quando a sessão mudar
+    useEffect(() => {
+        if (!sessionId) return;
+
+        const loadMessages = async () => {
+            try {
+                const { data, error } = await supabase
+                    .from('n8n_chat_histories')
+                    .select('*')
+                    .eq('session_id', sessionId)
+                    .order('id', { ascending: true });
+
+                if (error) {
+                    console.error('Erro ao carregar mensagens:', error);
+                    return;
+                }
+
+                if (data && data.length > 0) {
+                    const allMessages = data.map(entry => entry.message);
+                    setMessages(allMessages);
+
+                    // Verificar se ainda está processando
+                    const lastMessage = data[data.length - 1];
+                    if (lastMessage.message.type === 'human' && !data.some(entry =>
+                        entry.message.type === 'ai' &&
+                        entry.id > lastMessage.id)) {
+                        setIsProcessing(true);
+                    } else {
+                        setIsProcessing(false);
+                    }
+                } else {
+                    setMessages([]);
+                    setIsProcessing(false);
+                }
+            } catch (err) {
+                console.error('Erro na função loadMessages:', err);
+            }
+        };
+
+        loadMessages();
+
+        // Configurar polling para atualizações
+        if (pollingIntervalRef.current) {
+            clearInterval(pollingIntervalRef.current);
+        }
+
+        pollingIntervalRef.current = setInterval(() => {
+            loadMessages();
+        }, 1000);
+
+        return () => {
+            if (pollingIntervalRef.current) {
+                clearInterval(pollingIntervalRef.current);
+            }
+        };
+    }, [sessionId]);
+
     // Enviar mensagem
     const sendMessage = async (content: string): Promise<void> => {
-        try {
-            if (!sessionId || !content.trim()) return;
+        if (!sessionId || !content.trim() || isProcessing) return;
 
+        try {
             setIsProcessing(true);
 
             // Enviar para webhook do n8n
             const webhookUrl = process.env.NEXT_PUBLIC_N8N_WEBHOOK_URL;
 
-            if (webhookUrl) {
-                const payload = {
+            if (!webhookUrl) {
+                setError('URL do webhook não configurada');
+                setIsProcessing(false);
+                return;
+            }
+
+            // Criar objeto de mensagem para UI
+            const userMessage: ChatMessage = {
+                type: 'human',
+                content: content
+            };
+
+            // Atualizar UI imediatamente
+            setMessages(prev => [...prev, userMessage]);
+
+            // Enviar para n8n
+            const response = await fetch(webhookUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
                     chatInput: content,
                     sessionId: sessionId,
                     userId: userId || 'anônimo'
-                };
+                })
+            });
 
-                fetch(webhookUrl, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(payload)
-                }).then(() => {
-                    // Após enviar, recarregar mensagens para mostrar a nova mensagem
-                    loadMessages(sessionId);
-                }).catch(err => {
-                    console.error('Erro ao enviar para webhook:', err);
-                    setIsProcessing(false);
-                    setError('Falha ao comunicar com o servidor');
-                });
-            } else {
-                setIsProcessing(false);
-                setError('URL do webhook não configurada');
+            if (!response.ok) {
+                throw new Error(`Erro na resposta do webhook: ${response.status}`);
             }
-        } catch (err) {
+
+            // Não desativamos isProcessing - será desativado pelo polling quando a resposta chegar
+
+        } catch (err: any) {
             console.error('Erro ao enviar mensagem:', err);
+            setError('Falha ao enviar mensagem');
             setIsProcessing(false);
         }
     };
@@ -171,6 +199,8 @@ export function useChat(userId?: string): UseChatReturn {
     const changeSession = (newSessionId: string) => {
         if (newSessionId !== sessionId) {
             setSessionId(newSessionId);
+            setMessages([]);
+            setIsProcessing(false);
         }
     };
 
@@ -180,6 +210,7 @@ export function useChat(userId?: string): UseChatReturn {
             const newSessionId = uuidv4();
             setSessionId(newSessionId);
             setMessages([]);
+            setIsProcessing(false);
             setActiveSessions(prev => [newSessionId, ...prev]);
             return newSessionId;
         } catch (err) {

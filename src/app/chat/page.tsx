@@ -3,227 +3,130 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabase'; // Importe o cliente Supabase
+import { useAuth } from '@/context/AuthContext';
+import { useChat } from '@/hooks/useChat';
+import { supabase } from '@/lib/supabase';
+import ChatBubble from '@/components/chat/ChatBubble';
+import ChatInput from '@/components/chat/ChatInput';
+import Header from '@/components/layout/Header';
+import Sidebar from '@/components/layout/Sidebar';
 
-export default function SimpleChat() {
-    const [message, setMessage] = useState('');
-    const [messages, setMessages] = useState<{ content: string, isUser: boolean }[]>([
-        { content: 'Olá! Como posso ajudar você hoje?', isUser: false }
-    ]);
-    const [user, setUser] = useState<any>(null);
-    const [loading, setLoading] = useState(true);
+export default function ChatPage() {
+    const [sidebarOpen, setSidebarOpen] = useState(false);
+    const { user, logout } = useAuth();
     const router = useRouter();
 
-    // Verificar se o usuário está logado
+    // Usar o hook de chat com o ID do usuário atual
+    const {
+        messages,
+        sessionId,
+        loading,
+        error,
+        sendMessage,
+        changeSession,
+        createNewSession,
+        activeSessions
+    } = useChat(user?.id);
+
+    // Verificação periódica da sessão a cada 5 minutos (300000ms)
     useEffect(() => {
-        const checkUser = async () => {
-            const { data, error } = await supabase.auth.getSession();
+        // Se não há usuário, redirecionar para o login
+        if (!user) {
+            router.push('/login');
+            return;
+        }
 
-            if (error) {
-                console.error('Error fetching session:', error);
-                return;
+        // Verificar a sessão periodicamente
+        const intervalId = setInterval(async () => {
+            try {
+                const { data } = await supabase.auth.getSession();
+                if (!data.session) {
+                    // Sessão expirada, redirecionar para login
+                    router.push('/login?expired=true');
+                }
+            } catch (error) {
+                console.error('Erro ao verificar sessão:', error);
             }
+        }, 300000);
 
-            if (data.session) {
-                setUser(data.session.user);
-            } else {
-                router.push('/login');
-            }
+        return () => clearInterval(intervalId);
+    }, [user, router]);
 
-            setLoading(false);
-        };
+    const handleSendMessage = async (content: string) => {
+        if (!content.trim()) return;
+        await sendMessage(content);
+    };
 
-        checkUser();
-    }, [router]);
-
-    const handleSendMessage = () => {
-        if (!message.trim()) return;
-
-        // Adicionar mensagem do usuário
-        setMessages(prev => [...prev, { content: message, isUser: true }]);
-
-        // Simular resposta (em produção, isso seria a chamada ao webhook)
-        setTimeout(() => {
-            setMessages(prev => [...prev, {
-                content: `Recebi sua mensagem: "${message}"`,
-                isUser: false
-            }]);
-        }, 1000);
-
-        setMessage('');
+    const handleToggleSidebar = () => {
+        setSidebarOpen(!sidebarOpen);
     };
 
     const handleLogout = async () => {
-        await supabase.auth.signOut();
-        router.push('/login');
+        await logout();
     };
 
-    if (loading) {
+    const handleNewSession = async () => {
+        return await createNewSession();
+    };
+
+    if (loading && messages.length === 0) {
         return (
-            <div style={{
-                display: 'flex',
-                justifyContent: 'center',
-                alignItems: 'center',
-                height: '100vh'
-            }}>
-                <div style={{
-                    width: '50px',
-                    height: '50px',
-                    border: '5px solid #f3f3f3',
-                    borderTop: '5px solid #3b82f6',
-                    borderRadius: '50%',
-                    animation: 'spin 1s linear infinite'
-                }}></div>
+            <div className="flex items-center justify-center h-screen bg-gray-50 dark:bg-gray-900">
+                <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
             </div>
         );
     }
 
+    const userName = user?.email?.split('@')[0] || user?.user_metadata?.name || '';
+
     return (
-        <div style={{
-            display: 'flex',
-            flexDirection: 'column',
-            height: '100vh',
-            overflow: 'hidden',
-            backgroundColor: '#f8fafc'
-        }}>
-            {/* Header */}
-            <header style={{
-                backgroundColor: '#ffffff',
-                padding: '16px 20px',
-                boxShadow: '0 2px 5px rgba(0,0,0,0.1)',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center'
-            }}>
-                <h1 style={{
-                    margin: 0,
-                    fontSize: '20px',
-                    fontWeight: 'bold',
-                    color: '#1e293b'
-                }}>
-                    Oráculo Empresarial
-                </h1>
+        <div className="flex h-screen bg-gray-50 dark:bg-gray-900">
+            {/* Sidebar */}
+            <Sidebar
+                isOpen={sidebarOpen}
+                toggleSidebar={handleToggleSidebar}
+                activeSessions={activeSessions}
+                currentSessionId={sessionId}
+                onSessionSelect={changeSession}
+                onNewSession={handleNewSession}
+            />
 
-                <div style={{
-                    display: 'flex',
-                    alignItems: 'center'
-                }}>
-                    <div style={{
-                        backgroundColor: '#e0f2fe',
-                        color: '#0369a1',
-                        borderRadius: '4px',
-                        padding: '6px 10px',
-                        fontSize: '14px',
-                        marginRight: '16px'
-                    }}>
-                        {user?.email || 'Usuário'}
+            {/* Main content */}
+            <div className="flex flex-col flex-1 h-full">
+                <Header
+                    toggleSidebar={handleToggleSidebar}
+                    onLogout={handleLogout}
+                    userName={userName}
+                />
+
+                {/* Chat container */}
+                <div className="flex-1 overflow-y-auto p-4 bg-gray-50 dark:bg-gray-900">
+                    <div className="max-w-4xl mx-auto space-y-4">
+                        {error && (
+                            <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-4">
+                                <p>{error}</p>
+                            </div>
+                        )}
+
+                        {messages.length === 0 ? (
+                            <div className="text-center py-10">
+                                <h2 className="text-2xl font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                                    Comece uma nova conversa
+                                </h2>
+                                <p className="text-gray-500 dark:text-gray-400">
+                                    Envie uma mensagem para iniciar o chat com o Oráculo Empresarial
+                                </p>
+                            </div>
+                        ) : (
+                            messages.map((message, index) => (
+                                <ChatBubble key={index} message={message} />
+                            ))
+                        )}
                     </div>
-
-                    <button
-                        onClick={handleLogout}
-                        style={{
-                            backgroundColor: '#ef4444',
-                            color: 'white',
-                            border: 'none',
-                            borderRadius: '4px',
-                            padding: '8px 12px',
-                            cursor: 'pointer',
-                            fontSize: '14px'
-                        }}
-                    >
-                        Sair
-                    </button>
                 </div>
-            </header>
 
-            {/* Chat area */}
-            <div style={{
-                flex: 1,
-                overflow: 'auto',
-                padding: '20px',
-                display: 'flex',
-                flexDirection: 'column'
-            }}>
-                <div style={{
-                    maxWidth: '800px',
-                    width: '100%',
-                    margin: '0 auto',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '16px'
-                }}>
-                    {messages.map((msg, index) => (
-                        <div
-                            key={index}
-                            style={{
-                                alignSelf: msg.isUser ? 'flex-end' : 'flex-start',
-                                backgroundColor: msg.isUser ? '#3b82f6' : '#ffffff',
-                                color: msg.isUser ? 'white' : '#1e293b',
-                                padding: '12px 16px',
-                                borderRadius: msg.isUser ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
-                                maxWidth: '70%',
-                                boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
-                            }}
-                        >
-                            {msg.content}
-                        </div>
-                    ))}
-                </div>
-            </div>
-
-            {/* Input area */}
-            <div style={{
-                padding: '16px 20px',
-                backgroundColor: 'white',
-                borderTop: '1px solid #e5e7eb'
-            }}>
-                <div style={{
-                    display: 'flex',
-                    maxWidth: '800px',
-                    margin: '0 auto',
-                    gap: '12px'
-                }}>
-                    <input
-                        type="text"
-                        value={message}
-                        onChange={(e) => setMessage(e.target.value)}
-                        onKeyDown={(e) => {
-                            if (e.key === 'Enter' && !e.shiftKey) {
-                                e.preventDefault();
-                                handleSendMessage();
-                            }
-                        }}
-                        placeholder="Digite sua mensagem..."
-                        style={{
-                            flex: 1,
-                            padding: '12px 16px',
-                            borderRadius: '8px',
-                            border: '1px solid #d1d5db',
-                            outline: 'none',
-                            fontSize: '15px'
-                        }}
-                    />
-
-                    <button
-                        onClick={handleSendMessage}
-                        style={{
-                            backgroundColor: '#3b82f6',
-                            color: 'white',
-                            border: 'none',
-                            borderRadius: '8px',
-                            width: '48px',
-                            height: '48px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            cursor: 'pointer'
-                        }}
-                    >
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" style={{ width: '20px', height: '20px' }}>
-                            <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" />
-                        </svg>
-                    </button>
-                </div>
+                {/* Input area */}
+                <ChatInput onSendMessage={handleSendMessage} disabled={loading} />
             </div>
         </div>
     );

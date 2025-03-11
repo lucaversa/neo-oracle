@@ -1,10 +1,9 @@
-// src/app/login/page.tsx - revisão da função de login
+// src/app/login/page.tsx
 'use client'
 
 import { useState, FormEvent, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useAuth } from '@/context/AuthContext';
-import { createClient } from '@supabase/supabase-js';
+import { supabase } from '@/lib/supabase';
 
 export default function Login() {
     const [email, setEmail] = useState('');
@@ -14,107 +13,71 @@ export default function Login() {
     const [successMessage, setSuccessMessage] = useState('');
     const router = useRouter();
     const searchParams = useSearchParams();
-    const { login, user } = useAuth();
 
-    // Verificar mensagem de sucesso
+    // Verificar mensagens do URL
     useEffect(() => {
         const registered = searchParams.get('registered');
+        const expired = searchParams.get('expired');
+
         if (registered === 'true') {
             setSuccessMessage('Conta criada com sucesso! Você já pode fazer login.');
         }
+
+        if (expired === 'true') {
+            setError('Sua sessão expirou por inatividade. Por favor, faça login novamente.');
+        }
     }, [searchParams]);
 
-    // Redirecionar se estiver logado
+    // Verificar se já está autenticado
     useEffect(() => {
-        console.log("User state changed:", user);
-        if (user) {
-            console.log("User is logged in, redirecting to /chat");
-            router.push('/chat');
-        }
-    }, [user, router]);
+        const checkAuth = async () => {
+            try {
+                const { data } = await supabase.auth.getSession();
+                if (data.session) {
+                    console.log("Usuário já autenticado, redirecionando...");
+                    window.location.href = '/chat';
+                }
+            } catch (err) {
+                console.error("Erro ao verificar autenticação:", err);
+            }
+        };
 
-    const handleDirectLogin = async () => {
+        checkAuth();
+    }, []);
+
+    const handleLogin = async (e: FormEvent<HTMLFormElement>) => {
+        e.preventDefault();
+        console.log("Form submitted with:", { email, password });
+
+        if (!email || !password) {
+            setError('Por favor, preencha todos os campos.');
+            return;
+        }
+
         try {
             setLoading(true);
             setError('');
 
-            console.log('Tentando login direto com Supabase');
-
-            // Configuração direta do Supabase, similar à página de teste
-            const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
-            const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string;
-
-            if (!supabaseUrl || !supabaseAnonKey) {
-                throw new Error('Variáveis de ambiente não configuradas');
-            }
-
-            const supabase = createClient(supabaseUrl, supabaseAnonKey);
+            console.log("Iniciando login com:", email);
 
             const { data, error } = await supabase.auth.signInWithPassword({
                 email,
                 password
             });
 
-            if (error) throw error;
+            if (error) {
+                console.error("Erro na autenticação:", error.message);
+                throw error;
+            }
 
-            console.log('Login direto bem-sucedido:', data.user?.id);
+            console.log("Login bem-sucedido:", data);
 
-            // Redirecionar forçado mesmo que o estado do usuário não atualize
+            // Forçar redirecionamento usando window.location
             window.location.href = '/chat';
 
         } catch (err: any) {
-            console.error('Erro no login direto:', err);
-            setError(`Falha no login: ${err.message}`);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
-        e.preventDefault();
-        console.log("Form submitted");
-
-        try {
-            setLoading(true);
-            setError('');
-
-            // Validação básica de entrada
-            if (!email || !password) {
-                console.log("Empty fields detected");
-                setError('Por favor, preencha todos os campos.');
-                setLoading(false);
-                return;
-            }
-
-            console.log(`Attempting login with email: ${email}`);
-            const { data, error } = await login(email, password);
-
-            if (error) {
-                console.error('Login error returned:', error);
-                setError(`Erro ao fazer login: ${error.message || 'Credenciais inválidas'}`);
-                return;
-            }
-
-            console.log('Login successful, user data:', data?.user);
-
-            if (!data?.user) {
-                console.error('No user data returned from login');
-                setError('Não foi possível autenticar o usuário.');
-                return;
-            }
-
-            console.log('Attempting redirect to /chat');
-            router.push('/chat');
-
-            // Adicionando um redirecionamento extra de segurança após 1 segundo
-            setTimeout(() => {
-                console.log('Fallback redirect executing');
-                window.location.href = '/chat';
-            }, 1000);
-
-        } catch (err: any) {
-            console.error('Exception during login:', err);
-            setError(`Falha ao fazer login: ${err.message || 'Erro desconhecido'}`);
+            console.error("Erro no processo de login:", err);
+            setError(`Falha no login: ${err.message || 'Erro desconhecido'}`);
         } finally {
             setLoading(false);
         }
@@ -137,7 +100,7 @@ export default function Login() {
                 boxShadow: '0 10px 25px rgba(0, 0, 0, 0.08)',
                 overflow: 'hidden'
             }}>
-                {/* Cabeçalho com design gradiente */}
+                {/* Cabeçalho */}
                 <div style={{
                     padding: '40px 30px 30px',
                     background: 'linear-gradient(135deg, #0ea5e9 0%, #3b82f6 100%)',
@@ -204,7 +167,7 @@ export default function Login() {
                         </div>
                     )}
 
-                    <form onSubmit={handleSubmit}>
+                    <form onSubmit={handleLogin}>
                         <div style={{ marginBottom: '20px' }}>
                             <label
                                 htmlFor="email"
@@ -350,7 +313,6 @@ export default function Login() {
                             </label>
                         </div>
 
-                        {/* Botão de submit do formulário */}
                         <button
                             type="submit"
                             disabled={loading}
@@ -367,7 +329,8 @@ export default function Login() {
                                 fontSize: '15px',
                                 fontWeight: '500',
                                 cursor: loading ? 'not-allowed' : 'pointer',
-                                opacity: loading ? '0.7' : '1'
+                                opacity: loading ? '0.7' : '1',
+                                marginBottom: '12px'
                             }}
                         >
                             {loading ? (
@@ -403,30 +366,50 @@ export default function Login() {
                         </button>
                     </form>
 
-                    {/* Botão de login direto */}
-                    <div style={{ marginTop: '16px' }}>
-                        <button
-                            onClick={handleDirectLogin}
-                            disabled={loading || !email || !password}
-                            style={{
-                                display: 'flex',
-                                justifyContent: 'center',
-                                alignItems: 'center',
-                                width: '100%',
-                                padding: '12px',
-                                backgroundColor: '#10b981',
-                                color: 'white',
-                                border: 'none',
-                                borderRadius: '8px',
-                                fontSize: '15px',
-                                fontWeight: '500',
-                                cursor: loading || !email || !password ? 'not-allowed' : 'pointer',
-                                opacity: loading || !email || !password ? '0.7' : '1'
-                            }}
-                        >
-                            {loading ? 'Processando...' : 'Login Direto (Use este)'}
-                        </button>
-                    </div>
+                    {/* Botão alternativo para login direto */}
+                    <button
+                        onClick={async () => {
+                            if (!email || !password) {
+                                setError('Por favor, preencha todos os campos.');
+                                return;
+                            }
+
+                            setLoading(true);
+                            try {
+                                const { data, error } = await supabase.auth.signInWithPassword({
+                                    email,
+                                    password
+                                });
+
+                                if (error) throw error;
+
+                                // Forçar navegação direta
+                                window.location.href = '/chat';
+                            } catch (err: any) {
+                                setError(`Falha no login alternativo: ${err.message}`);
+                            } finally {
+                                setLoading(false);
+                            }
+                        }}
+                        disabled={loading || !email || !password}
+                        style={{
+                            display: 'flex',
+                            justifyContent: 'center',
+                            alignItems: 'center',
+                            width: '100%',
+                            padding: '12px',
+                            backgroundColor: '#10b981',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '8px',
+                            fontSize: '15px',
+                            fontWeight: '500',
+                            cursor: (loading || !email || !password) ? 'not-allowed' : 'pointer',
+                            opacity: (loading || !email || !password) ? '0.7' : '1'
+                        }}
+                    >
+                        Login Direto (Use se o normal não funcionar)
+                    </button>
 
                     <div style={{
                         marginTop: '24px',

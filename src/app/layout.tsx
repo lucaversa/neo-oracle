@@ -1,6 +1,7 @@
 // src/app/layout.tsx
 import './globals.css';
 import { AuthProvider } from '@/context/AuthContext';
+import SessionTimeoutWrapper from '@/components/auth/SessionTimeoutWrapper';
 
 export const metadata = {
   title: 'Oráculo Empresarial',
@@ -16,7 +17,9 @@ export default function RootLayout({
     <html lang="pt-BR">
       <body>
         <AuthProvider>
-          {children}
+          <SessionTimeoutWrapper>
+            {children}
+          </SessionTimeoutWrapper>
         </AuthProvider>
       </body>
     </html>

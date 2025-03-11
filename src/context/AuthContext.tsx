@@ -14,7 +14,12 @@ if (!supabaseUrl || !supabaseAnonKey) {
     console.error('Variáveis de ambiente NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_ANON_KEY não definidas');
 }
 
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
+const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+    auth: {
+        autoRefreshToken: true,
+        persistSession: true,
+    }
+});
 
 // Tipos
 type User = {
@@ -30,6 +35,8 @@ type AuthContextType = {
     loading: boolean;
     login: (email: string, password: string) => Promise<any>;
     logout: () => Promise<void>;
+    checkSessionValid: () => Promise<boolean>;
+    refreshSession: () => Promise<boolean>;
 }
 
 // Criar contexto
@@ -77,12 +84,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         };
     }, []);
 
+    // Função para verificar se a sessão está válida
+    const checkSessionValid = async (): Promise<boolean> => {
+        try {
+            const { data, error } = await supabase.auth.getSession();
+
+            if (error || !data.session) {
+                return false;
+            }
+
+            return true;
+        } catch (error) {
+            console.error('Erro ao verificar validade da sessão:', error);
+            return false;
+        }
+    };
+
+    // Função para atualizar o token de acesso
+    const refreshSession = async (): Promise<boolean> => {
+        try {
+            const { data, error } = await supabase.auth.refreshSession();
+
+            if (error || !data.session) {
+                return false;
+            }
+
+            return true;
+        } catch (error) {
+            console.error('Erro ao atualizar sessão:', error);
+            return false;
+        }
+    };
+
     // Função de login
     const login = async (email: string, password: string) => {
         try {
-            // Log para depuração (remova em produção)
-            console.log('Tentando login com:', { email, supabaseUrl, supabaseAnonKey: supabaseAnonKey.substring(0, 5) + '...' });
-
             const { data, error } = await supabase.auth.signInWithPassword({
                 email,
                 password
@@ -120,7 +156,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user,
         loading,
         login,
-        logout
+        logout,
+        checkSessionValid,
+        refreshSession
     };
 
     return (

@@ -1,4 +1,4 @@
-// src/context/AuthContext.tsx
+// src/context/AuthContext.tsx - Versão melhorada
 'use client'
 
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
@@ -18,6 +18,8 @@ const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     auth: {
         autoRefreshToken: true,
         persistSession: true,
+        storageKey: 'supabase-auth',  // Chave específica para armazenamento
+        storage: typeof window !== 'undefined' ? window.localStorage : undefined  // Garantir que usa localStorage
     }
 });
 
@@ -58,8 +60,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 if (error) {
                     console.error('Erro ao obter sessão:', error);
                     setUser(null);
+                } else if (data.session) {
+                    console.log('Sessão encontrada:', data.session.user.email);
+                    setUser(data.session.user);
                 } else {
-                    setUser(data.session?.user || null);
+                    console.log('Nenhuma sessão ativa encontrada');
+                    setUser(null);
                 }
             } catch (error) {
                 console.error('Erro ao verificar autenticação:', error);
@@ -73,7 +79,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         // Configurar listener para mudanças de autenticação
         const { data: { subscription } } = supabase.auth.onAuthStateChange(
-            (_event, session) => {
+            (event, session) => {
+                console.log('Evento de autenticação:', event);
                 setUser(session?.user || null);
                 setLoading(false);
             }
@@ -130,6 +137,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             }
 
             console.log('Login bem-sucedido:', data.user?.email);
+            setUser(data.user);
+
             return { data, error: null };
         } catch (error) {
             console.error('Exceção durante login:', error);
@@ -140,14 +149,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Função de logout
     const logout = async () => {
         try {
+            setLoading(true);
             const { error } = await supabase.auth.signOut();
             if (error) {
                 console.error('Erro ao fazer logout:', error);
                 throw error;
             }
+
+            setUser(null);
             router.push('/login');
         } catch (error) {
             console.error('Exceção durante logout:', error);
+        } finally {
+            setLoading(false);
         }
     };
 

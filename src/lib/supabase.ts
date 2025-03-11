@@ -1,27 +1,21 @@
+// src/lib/supabase.ts - Versão ultra simplificada
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string;
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 
-if (!supabaseUrl || !supabaseAnonKey) {
-    throw new Error('Supabase URL e chave anônima devem ser definidas nas variáveis de ambiente');
+export const supabase = createClient(supabaseUrl, supabaseKey);
+
+// Funções auxiliares simples
+export async function isLoggedIn() {
+    const { data, error } = await supabase.auth.getSession();
+    return !!data.session;
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
-
-// src/types/auth.ts
-export interface User {
-    id: string;
-    email?: string;
-    user_metadata?: {
-        name?: string;
-    };
+export async function loginWithEmail(email: string, password: string) {
+    return supabase.auth.signInWithPassword({ email, password });
 }
 
-export interface AuthResponse {
-    data: {
-        user: User | null;
-        session: unknown;
-    } | null;
-    error: Error | null;
+export async function logout() {
+    return supabase.auth.signOut();
 }

@@ -4,10 +4,16 @@ import { useTheme } from '@/context/ThemeContext';
 interface ChatInputProps {
     onSendMessage: (message: string) => Promise<void>;
     disabled?: boolean;
-    isThinking?: boolean; // Nova prop para indicar se o Oráculo está "pensando"
+    isThinking?: boolean;
+    placeholder?: string;
 }
 
-export default function ChatInput({ onSendMessage, disabled = false, isThinking = false }: ChatInputProps) {
+export default function ChatInput({
+    onSendMessage,
+    disabled = false,
+    isThinking = false,
+    placeholder = "Digite sua mensagem..."
+}: ChatInputProps) {
     const [message, setMessage] = useState('');
     const [isSending, setIsSending] = useState(false);
     const { isDarkMode } = useTheme();
@@ -15,7 +21,7 @@ export default function ChatInput({ onSendMessage, disabled = false, isThinking 
     const handleSubmit = async (e: FormEvent) => {
         e.preventDefault();
 
-        if (!message.trim() || isSending || isThinking) return;
+        if (!message.trim() || isSending || isThinking || disabled) return;
 
         setIsSending(true);
         try {
@@ -33,6 +39,8 @@ export default function ChatInput({ onSendMessage, disabled = false, isThinking 
             handleSubmit(e);
         }
     };
+
+    const inputDisabled = disabled || isSending || isThinking;
 
     return (
         <div style={{
@@ -112,13 +120,13 @@ export default function ChatInput({ onSendMessage, disabled = false, isThinking 
                             value={message}
                             onChange={(e) => setMessage(e.target.value)}
                             onKeyDown={handleKeyDown}
-                            placeholder={isThinking ? "Aguarde o Oráculo terminar de pensar..." : "Digite sua mensagem..."}
-                            disabled={disabled || isSending || isThinking}
+                            placeholder={isThinking ? "Aguarde o Oráculo terminar de pensar..." : placeholder}
+                            disabled={inputDisabled}
                             style={{
                                 width: '100%',
                                 padding: '14px 16px',
                                 paddingRight: '50px',
-                                backgroundColor: 'var(--background-main)',
+                                backgroundColor: inputDisabled ? 'var(--background-subtle)' : 'var(--background-main)',
                                 borderRadius: '16px',
                                 border: '1px solid var(--border-color)',
                                 outline: 'none',
@@ -129,14 +137,15 @@ export default function ChatInput({ onSendMessage, disabled = false, isThinking 
                                 fontSize: '15px',
                                 lineHeight: '1.5',
                                 color: 'var(--text-primary)',
-                                boxShadow: 'var(--shadow-sm)'
+                                boxShadow: 'var(--shadow-sm)',
+                                opacity: inputDisabled ? 0.6 : 1
                             }}
                             rows={1}
                         />
 
                         <button
                             type="submit"
-                            disabled={disabled || isSending || !message.trim() || isThinking}
+                            disabled={inputDisabled || !message.trim()}
                             style={{
                                 position: 'absolute',
                                 right: '10px',
@@ -146,13 +155,13 @@ export default function ChatInput({ onSendMessage, disabled = false, isThinking 
                                 backgroundColor: '#4f46e5',
                                 color: 'white',
                                 border: 'none',
-                                cursor: (disabled || isSending || !message.trim() || isThinking) ? 'not-allowed' : 'pointer',
-                                opacity: (disabled || isSending || !message.trim() || isThinking) ? 0.5 : 1,
+                                cursor: (inputDisabled || !message.trim()) ? 'not-allowed' : 'pointer',
+                                opacity: (inputDisabled || !message.trim()) ? 0.5 : 1,
                                 transition: 'background-color 0.2s, transform 0.2s',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
-                                transform: (disabled || isSending || !message.trim() || isThinking) ? 'scale(0.95)' : 'scale(1)',
+                                transform: (inputDisabled || !message.trim()) ? 'scale(0.95)' : 'scale(1)',
                                 boxShadow: 'var(--shadow-sm)'
                             }}
                         >

@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useTheme } from '@/context/ThemeContext';
+import { supabase } from '@/lib/supabase';
 
 interface SidebarProps {
     isOpen: boolean;
@@ -8,7 +9,12 @@ interface SidebarProps {
     currentSessionId: string;
     onSessionSelect: (sessionId: string) => void;
     onNewSession: () => Promise<string | null>;
-    userId?: string; // Para implementação futura de filtro por usuário
+    userId?: string;
+}
+
+interface SessionInfo {
+    id: string;
+    firstMessage: string;
 }
 
 export default function Sidebar({
@@ -21,7 +27,84 @@ export default function Sidebar({
     userId
 }: SidebarProps) {
     const [creating, setCreating] = useState(false);
+    const [sessionInfos, setSessionInfos] = useState<Map<string, SessionInfo>>(new Map());
     const { isDarkMode } = useTheme();
+
+    // Carregar primeira mensagem para cada sessão
+    useEffect(() => {
+        const loadSessionInfos = async () => {
+            if (activeSessions.length === 0) return;
+
+            console.log('Carregando informações para sessões:', activeSessions);
+            const newSessionInfos = new Map<string, SessionInfo>();
+
+            for (const sessionId of activeSessions) {
+                try {
+                    console.log('Carregando info para sessão:', sessionId);
+
+                    // Buscar mensagens desta sessão
+                    const { data, error } = await supabase
+                        .from('n8n_chat_histories')
+                        .select('message')
+                        .eq('session_id', sessionId)
+                        .order('id');
+
+                    if (error) {
+                        console.error('Erro ao carregar mensagens:', error);
+                        throw error;
+                    }
+
+                    console.log(`Encontrados ${data?.length || 0} registros`);
+
+                    let firstMessage = 'Nova conversa';
+
+                    if (data && data.length > 0) {
+                        // Filtrar mensagens humanas válidas
+                        const humanMessages = data.filter(item => {
+                            try {
+                                return item &&
+                                    item.message &&
+                                    typeof item.message === 'object' &&
+                                    item.message.type === 'human' &&
+                                    typeof item.message.content === 'string';
+                            } catch {
+                                return false;
+                            }
+                        });
+
+                        if (humanMessages.length > 0) {
+                            // Pegar a primeira mensagem humana
+                            const content = humanMessages[0].message.content;
+
+                            // Truncar se necessário
+                            firstMessage = content.length > 25
+                                ? content.substring(0, 25) + '...'
+                                : content;
+
+                            console.log('Primeira mensagem:', firstMessage);
+                        }
+                    }
+
+                    newSessionInfos.set(sessionId, {
+                        id: sessionId,
+                        firstMessage
+                    });
+
+                } catch (err) {
+                    console.error('Erro ao processar sessão:', err);
+                    // Usar nome padrão em caso de erro
+                    newSessionInfos.set(sessionId, {
+                        id: sessionId,
+                        firstMessage: `Conversa ${sessionId.substring(0, 5)}...`
+                    });
+                }
+            }
+
+            setSessionInfos(newSessionInfos);
+        };
+
+        loadSessionInfos();
+    }, [activeSessions]);
 
     const handleNewSession = async () => {
         setCreating(true);
@@ -32,10 +115,23 @@ export default function Sidebar({
         }
     };
 
-    // Formatar o ID de sessão para exibição
-    const formatSessionName = (index: number): string => {
-        // Usar uma abordagem mais amigável para os nomes das conversas
+    // Função para obter nome amigável para a sessão
+    const getSessionName = (sessionId: string, index: number): string => {
+        // Se temos informações sobre a sessão, usar a primeira mensagem
+        if (sessionInfos.has(sessionId)) {
+            return sessionInfos.get(sessionId)!.firstMessage;
+        }
+
+        // Fallback para índice
         return `Conversa ${index + 1}`;
+    };
+
+    // Função para verificar se todas as sessões têm o mesmo ID
+    const hasDuplicateSessions = (): boolean => {
+        if (activeSessions.length <= 1) return false;
+
+        const firstId = activeSessions[0];
+        return activeSessions.every(id => id === firstId);
     };
 
     const sidebarStyle: React.CSSProperties = {
@@ -58,6 +154,9 @@ export default function Sidebar({
         sidebarStyle.position = 'relative';
         sidebarStyle.transform = 'translateX(0)';
     }
+
+    // Verificar se todas as sessões têm o mesmo ID
+    const duplicateSessions = hasDuplicateSessions();
 
     return (
         <div style={sidebarStyle}>
@@ -154,6 +253,21 @@ export default function Sidebar({
                 </button>
             </div>
 
+            {/* Aviso caso todas as sessões tenham o mesmo ID */}
+            {duplicateSessions && (
+                <div style={{
+                    padding: '12px 16px',
+                    margin: '0 12px 12px 12px',
+                    backgroundColor: 'rgba(245, 158, 11, 0.1)',
+                    borderLeft: '4px solid var(--warning-color)',
+                    color: 'var(--warning-color)',
+                    borderRadius: '4px',
+                    fontSize: '13px'
+                }}>
+                    <p>Todas as conversas têm o mesmo ID de sessão. Crie uma nova conversa.</p>
+                </div>
+            )}
+
             <div style={{
                 flexGrow: 1,
                 overflowY: 'auto',
@@ -196,25 +310,21 @@ export default function Sidebar({
                         flexDirection: 'column',
                         gap: '6px'
                     }}>
-                        {activeSessions.map((session, index) => (
-                            <li key={session}>
+                        {duplicateSessions ? (
+                            // Se todas as sessões têm o mesmo ID, mostrar apenas uma
+                            <li key={activeSessions[0]}>
                                 <button
-                                    onClick={() => onSessionSelect(session)}
+                                    onClick={() => onSessionSelect(activeSessions[0])}
                                     style={{
                                         width: '100%',
                                         textAlign: 'left',
                                         padding: '10px 12px',
                                         borderRadius: '8px',
-                                        backgroundColor: currentSessionId === session
-                                            ? 'var(--background-subtle)'
-                                            : 'transparent',
-                                        color: currentSessionId === session
-                                            ? 'var(--text-primary)'
-                                            : 'var(--text-secondary)',
+                                        backgroundColor: 'var(--background-subtle)',
+                                        color: 'var(--text-primary)',
                                         border: 'none',
                                         cursor: 'pointer',
-                                        transition: 'background-color 0.2s',
-                                        fontWeight: currentSessionId === session ? '500' : 'normal',
+                                        fontWeight: '500',
                                         overflow: 'hidden',
                                         textOverflow: 'ellipsis',
                                         whiteSpace: 'nowrap',
@@ -241,11 +351,65 @@ export default function Sidebar({
                                         overflow: 'hidden',
                                         textOverflow: 'ellipsis'
                                     }}>
-                                        {formatSessionName(index)}
+                                        {sessionInfos.has(activeSessions[0])
+                                            ? sessionInfos.get(activeSessions[0])!.firstMessage
+                                            : 'Conversa'}
                                     </span>
                                 </button>
                             </li>
-                        ))}
+                        ) : (
+                            // Caso contrário, mostrar todas as sessões
+                            activeSessions.map((session, index) => (
+                                <li key={session}>
+                                    <button
+                                        onClick={() => onSessionSelect(session)}
+                                        style={{
+                                            width: '100%',
+                                            textAlign: 'left',
+                                            padding: '10px 12px',
+                                            borderRadius: '8px',
+                                            backgroundColor: currentSessionId === session
+                                                ? 'var(--background-subtle)'
+                                                : 'transparent',
+                                            color: currentSessionId === session
+                                                ? 'var(--text-primary)'
+                                                : 'var(--text-secondary)',
+                                            border: 'none',
+                                            cursor: 'pointer',
+                                            transition: 'background-color 0.2s',
+                                            fontWeight: currentSessionId === session ? '500' : 'normal',
+                                            overflow: 'hidden',
+                                            textOverflow: 'ellipsis',
+                                            whiteSpace: 'nowrap',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '8px'
+                                        }}
+                                    >
+                                        <svg
+                                            xmlns="http://www.w3.org/2000/svg"
+                                            width="16"
+                                            height="16"
+                                            viewBox="0 0 24 24"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            strokeWidth="2"
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                        >
+                                            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                                        </svg>
+                                        <span style={{
+                                            fontWeight: '500',
+                                            overflow: 'hidden',
+                                            textOverflow: 'ellipsis'
+                                        }}>
+                                            {getSessionName(session, index)}
+                                        </span>
+                                    </button>
+                                </li>
+                            ))
+                        )}
                     </ul>
                 )}
             </div>

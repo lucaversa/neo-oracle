@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
@@ -15,6 +15,7 @@ export default function ChatPage() {
     const { user, loading: authLoading, logout } = useAuth();
     const { isDarkMode } = useTheme();
     const router = useRouter();
+    const chatContainerRef = useRef<HTMLDivElement>(null);
 
     // Proteger a rota - redirecionar se não estiver autenticado
     useEffect(() => {
@@ -33,27 +34,23 @@ export default function ChatPage() {
         changeSession,
         createNewSession,
         activeSessions,
-        isProcessing // Novo estado para controlar quando o Oráculo está processando
+        isProcessing,
+        sessionLimitReached
     } = useChat(user?.id);
+
+    // Rolar para o final da conversa quando novas mensagens chegarem
+    useEffect(() => {
+        if (chatContainerRef.current && messages.length > 0) {
+            const container = chatContainerRef.current;
+            container.scrollTop = container.scrollHeight;
+        }
+    }, [messages]);
 
     // Mostrar um loading state enquanto verifica a autenticação
     if (authLoading) {
         return (
-            <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                height: '100vh',
-                backgroundColor: 'var(--background-main)'
-            }}>
-                <div style={{
-                    width: '48px',
-                    height: '48px',
-                    border: '4px solid var(--border-color)',
-                    borderTopColor: '#4f46e5',
-                    borderRadius: '50%',
-                    animation: 'spin 1s linear infinite'
-                }}></div>
+            <div className="flex items-center justify-center h-screen bg-background-main">
+                <div className="w-12 h-12 border-4 border-border-color border-t-primary-color rounded-full animate-spin"></div>
             </div>
         );
     }
@@ -75,23 +72,25 @@ export default function ChatPage() {
         return await createNewSession();
     };
 
+    const handleSendMessage = async (content: string) => {
+        if (sessionLimitReached) {
+            // Criar automaticamente uma nova sessão se o limite for atingido
+            const newSessionId = await createNewSession();
+            if (newSessionId) {
+                // Aguardar um momento para a mudança de estado ocorrer
+                setTimeout(() => {
+                    sendMessage(content);
+                }, 100);
+            }
+        } else {
+            await sendMessage(content);
+        }
+    };
+
     if (loading && messages.length === 0) {
         return (
-            <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                height: '100vh',
-                backgroundColor: 'var(--background-main)'
-            }}>
-                <div style={{
-                    width: '48px',
-                    height: '48px',
-                    border: '4px solid var(--border-color)',
-                    borderTopColor: '#4f46e5',
-                    borderRadius: '50%',
-                    animation: 'spin 1s linear infinite'
-                }}></div>
+            <div className="flex items-center justify-center h-screen bg-background-main">
+                <div className="w-12 h-12 border-4 border-border-color border-t-primary-color rounded-full animate-spin"></div>
             </div>
         );
     }
@@ -131,13 +130,16 @@ export default function ChatPage() {
                 />
 
                 {/* Chat container */}
-                <div style={{
-                    flex: 1,
-                    overflowY: 'auto',
-                    padding: '16px',
-                    backgroundColor: 'var(--background-main)',
-                    transition: 'background-color 0.3s'
-                }}>
+                <div
+                    ref={chatContainerRef}
+                    style={{
+                        flex: 1,
+                        overflowY: 'auto',
+                        padding: '16px',
+                        backgroundColor: 'var(--background-main)',
+                        transition: 'background-color 0.3s'
+                    }}
+                >
                     <div style={{
                         maxWidth: '900px',
                         margin: '0 auto',
@@ -156,6 +158,22 @@ export default function ChatPage() {
                                 borderRadius: '4px'
                             }}>
                                 <p>{error}</p>
+                                {sessionLimitReached && (
+                                    <button
+                                        onClick={handleNewSession}
+                                        style={{
+                                            marginTop: '8px',
+                                            padding: '6px 12px',
+                                            backgroundColor: 'var(--primary-color)',
+                                            color: 'white',
+                                            borderRadius: '4px',
+                                            border: 'none',
+                                            cursor: 'pointer'
+                                        }}
+                                    >
+                                        Iniciar Nova Conversa
+                                    </button>
+                                )}
                             </div>
                         )}
 
@@ -205,7 +223,7 @@ export default function ChatPage() {
                             <>
                                 {messages.map((message, index) => (
                                     <ChatBubble
-                                        key={index}
+                                        key={`${sessionId}-${index}`}
                                         message={message}
                                         userName={userName}
                                     />
@@ -279,6 +297,34 @@ export default function ChatPage() {
                                         </div>
                                     </div>
                                 )}
+
+                                {sessionLimitReached && !error && (
+                                    <div style={{
+                                        backgroundColor: 'rgba(245, 158, 11, 0.1)',
+                                        borderLeft: '4px solid var(--warning-color)',
+                                        color: 'var(--warning-color)',
+                                        padding: '16px',
+                                        marginTop: '16px',
+                                        marginBottom: '16px',
+                                        borderRadius: '4px'
+                                    }}>
+                                        <p>Você atingiu o limite de 10 mensagens para esta conversa.</p>
+                                        <button
+                                            onClick={handleNewSession}
+                                            style={{
+                                                marginTop: '8px',
+                                                padding: '6px 12px',
+                                                backgroundColor: 'var(--primary-color)',
+                                                color: 'white',
+                                                borderRadius: '4px',
+                                                border: 'none',
+                                                cursor: 'pointer'
+                                            }}
+                                        >
+                                            Iniciar Nova Conversa
+                                        </button>
+                                    </div>
+                                )}
                             </>
                         )}
                     </div>
@@ -286,9 +332,10 @@ export default function ChatPage() {
 
                 {/* Input area */}
                 <ChatInput
-                    onSendMessage={sendMessage}
-                    disabled={loading}
+                    onSendMessage={handleSendMessage}
+                    disabled={loading || sessionLimitReached}
                     isThinking={isProcessing}
+                    placeholder={sessionLimitReached ? "Limite de mensagens atingido. Crie uma nova conversa." : "Digite sua mensagem..."}
                 />
             </div>
         </div>

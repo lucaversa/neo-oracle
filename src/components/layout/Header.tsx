@@ -1,3 +1,6 @@
+import { useState } from 'react';
+import { useTheme } from '@/context/ThemeContext';
+
 interface HeaderProps {
     toggleSidebar: () => void;
     onLogout: () => Promise<void>;
@@ -5,74 +8,226 @@ interface HeaderProps {
 }
 
 export default function Header({ toggleSidebar, onLogout, userName }: HeaderProps) {
+    const [userMenuOpen, setUserMenuOpen] = useState(false);
+    const { isDarkMode, toggleDarkMode } = useTheme();
+
+    const toggleUserMenu = () => {
+        setUserMenuOpen(!userMenuOpen);
+    };
+
     return (
-        <header className="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700">
-            <div className="flex items-center justify-between px-4 py-3">
-                <div className="flex items-center">
+        <header style={{
+            backgroundColor: 'var(--background-elevated)',
+            boxShadow: 'var(--shadow-sm)',
+            borderBottom: '1px solid var(--border-color)',
+            color: 'var(--text-primary)',
+            transition: 'background-color 0.3s, color 0.3s'
+        }}>
+            <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '12px 16px',
+                maxWidth: '1400px',
+                margin: '0 auto',
+                width: '100%'
+            }}>
+                <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '16px'
+                }}>
                     <button
                         onClick={toggleSidebar}
-                        className="p-2 mr-2 text-gray-600 rounded-md hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                        style={{
+                            padding: '8px',
+                            borderRadius: '8px',
+                            backgroundColor: 'transparent',
+                            border: 'none',
+                            cursor: 'pointer',
+                            color: 'var(--text-secondary)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center'
+                        }}
+                        aria-label="Abrir menu lateral"
                     >
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
                         </svg>
                     </button>
-                    <h1 className="text-lg font-semibold text-gray-800 dark:text-white">Oráculo Empresarial</h1>
+
+                    {/* Espaço para Logo */}
+                    <div style={{
+                        height: '40px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        padding: '0 8px'
+                    }}>
+                        <span style={{
+                            fontSize: '20px',
+                            fontWeight: 'bold',
+                            color: '#4f46e5', // Cor fixa para o logo, não muda com o tema
+                            display: 'inline-block'
+                        }}>
+                            Oráculo Empresarial
+                        </span>
+                    </div>
                 </div>
 
-                <div className="flex items-center">
+                <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px'
+                }}>
+                    {/* Botão de tema */}
                     <button
-                        className="ml-2 p-2 text-gray-600 rounded-md hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-primary-500"
-                        title="Alternar tema"
+                        onClick={toggleDarkMode}
+                        style={{
+                            padding: '10px',
+                            borderRadius: '50%',
+                            backgroundColor: 'var(--background-subtle)',
+                            color: 'var(--text-secondary)',
+                            border: 'none',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            transition: 'background-color 0.2s'
+                        }}
+                        title={isDarkMode ? "Modo Claro" : "Modo Escuro"}
                     >
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                            <path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z" />
-                        </svg>
+                        {isDarkMode ? (
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <circle cx="12" cy="12" r="5" />
+                                <line x1="12" y1="1" x2="12" y2="3" />
+                                <line x1="12" y1="21" x2="12" y2="23" />
+                                <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+                                <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+                                <line x1="1" y1="12" x2="3" y2="12" />
+                                <line x1="21" y1="12" x2="23" y2="12" />
+                                <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
+                                <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+                            </svg>
+                        ) : (
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+                            </svg>
+                        )}
                     </button>
 
-                    <div className="relative ml-3">
-                        <div>
-                            <button
-                                type="button"
-                                className="flex text-sm rounded-full focus:outline-none focus:ring-2 focus:ring-primary-500"
-                                id="user-menu-button"
-                            >
-                                <span className="sr-only">Abrir menu do usuário</span>
-                                <div className="h-8 w-8 rounded-full bg-primary-600 flex items-center justify-center text-white">
-                                    {userName ? userName.charAt(0).toUpperCase() : 'U'}
-                                </div>
-                            </button>
-                        </div>
-
-                        <div
-                            className="hidden origin-top-right absolute right-0 mt-2 w-48 rounded-md shadow-lg py-1 bg-white dark:bg-gray-800 ring-1 ring-black ring-opacity-5 focus:outline-none"
-                            role="menu"
-                            aria-orientation="vertical"
-                            aria-labelledby="user-menu-button"
-                            tabIndex={-1}
+                    {/* Menu do usuário */}
+                    <div style={{
+                        position: 'relative'
+                    }}>
+                        <button
+                            onClick={toggleUserMenu}
+                            style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '8px',
+                                padding: '6px 12px 6px 6px',
+                                borderRadius: '9999px',
+                                border: '1px solid var(--border-color)',
+                                backgroundColor: 'var(--background-elevated)',
+                                cursor: 'pointer',
+                                transition: 'all 0.2s'
+                            }}
+                            aria-label="Menu do usuário"
                         >
-                            <a
-                                href="#"
-                                className="block px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
-                                role="menuitem"
+                            <div style={{
+                                height: '32px',
+                                width: '32px',
+                                borderRadius: '50%',
+                                background: 'linear-gradient(135deg, #4f46e5, #3b82f6)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                color: 'white',
+                                fontSize: '14px',
+                                fontWeight: '600',
+                                boxShadow: 'var(--shadow-sm)'
+                            }}>
+                                {userName ? userName.charAt(0).toUpperCase() : 'U'}
+                            </div>
+                            <span style={{
+                                color: 'var(--text-secondary)',
+                                fontSize: '14px',
+                                fontWeight: '500'
+                            }}>
+                                {userName || 'Usuário'}
+                            </span>
+                        </button>
+
+                        {userMenuOpen && (
+                            <div
+                                style={{
+                                    position: 'absolute',
+                                    right: 0,
+                                    top: '48px',
+                                    width: '200px',
+                                    borderRadius: '12px',
+                                    backgroundColor: 'var(--background-elevated)',
+                                    boxShadow: 'var(--shadow-lg)',
+                                    border: '1px solid var(--border-color)',
+                                    zIndex: 50,
+                                    overflow: 'hidden'
+                                }}
+                                role="menu"
                             >
-                                Meu perfil
-                            </a>
-                            <a
-                                href="#"
-                                className="block px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
-                                role="menuitem"
-                            >
-                                Configurações
-                            </a>
-                            <button
-                                onClick={onLogout}
-                                className="block w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
-                                role="menuitem"
-                            >
-                                Sair
-                            </button>
-                        </div>
+                                <div
+                                    style={{
+                                        padding: '16px',
+                                        borderBottom: '1px solid var(--border-color)'
+                                    }}
+                                >
+                                    <p style={{
+                                        fontSize: '14px',
+                                        fontWeight: '600',
+                                        color: 'var(--text-primary)'
+                                    }}>
+                                        {userName || 'Usuário'}
+                                    </p>
+                                    <p style={{
+                                        fontSize: '12px',
+                                        color: 'var(--text-tertiary)',
+                                        marginTop: '4px'
+                                    }}>
+                                        {userName ? `${userName}@email.com` : 'user@email.com'}
+                                    </p>
+                                </div>
+
+                                <div style={{ padding: '8px 0' }}>
+                                    <button
+                                        onClick={() => {
+                                            setUserMenuOpen(false);
+                                            onLogout();
+                                        }}
+                                        style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '8px',
+                                            width: '100%',
+                                            textAlign: 'left',
+                                            padding: '10px 16px',
+                                            fontSize: '14px',
+                                            color: 'var(--text-primary)',
+                                            backgroundColor: 'transparent',
+                                            border: 'none',
+                                            cursor: 'pointer',
+                                            transition: 'background-color 0.2s'
+                                        }}
+                                    >
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                                            <polyline points="16 17 21 12 16 7" />
+                                            <line x1="21" y1="12" x2="9" y2="12" />
+                                        </svg>
+                                        Sair
+                                    </button>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>

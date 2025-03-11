@@ -1,86 +1,57 @@
-// src/context/AuthContext.tsx - Versão melhorada
 'use client'
 
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
-import { createClient } from '@supabase/supabase-js';
-
-// Inicializar cliente Supabase 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string;
-
-// Verificar se as variáveis de ambiente estão definidas
-if (!supabaseUrl || !supabaseAnonKey) {
-    console.error('Variáveis de ambiente NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_ANON_KEY não definidas');
-}
-
-const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-    auth: {
-        autoRefreshToken: true,
-        persistSession: true,
-        storageKey: 'supabase-auth',  // Chave específica para armazenamento
-        storage: typeof window !== 'undefined' ? window.localStorage : undefined  // Garantir que usa localStorage
-    }
-});
-
-// Tipos
-type User = {
-    id: string;
-    email?: string;
-    user_metadata?: {
-        name?: string;
-    };
-}
+import { supabase } from '@/lib/supabase';
+import { User } from '@supabase/supabase-js';
 
 type AuthContextType = {
     user: User | null;
     loading: boolean;
-    login: (email: string, password: string) => Promise<any>;
+    error: string | null;
+    login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
     logout: () => Promise<void>;
-    checkSessionValid: () => Promise<boolean>;
-    refreshSession: () => Promise<boolean>;
-}
+};
 
-// Criar contexto
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Provider
 export function AuthProvider({ children }: { children: ReactNode }) {
     const [user, setUser] = useState<User | null>(null);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
     const router = useRouter();
 
-    // Verificar sessão atual e configurar listener
+    // Verificar sessão atual ao carregar
     useEffect(() => {
-        // Função para obter o usuário atual
-        const getSession = async () => {
+        const fetchUser = async () => {
             try {
-                const { data, error } = await supabase.auth.getSession();
+                setLoading(true);
+
+                // Obter a sessão atual
+                const { data: { session }, error } = await supabase.auth.getSession();
 
                 if (error) {
-                    console.error('Erro ao obter sessão:', error);
-                    setUser(null);
-                } else if (data.session) {
-                    console.log('Sessão encontrada:', data.session.user.email);
-                    setUser(data.session.user);
-                } else {
-                    console.log('Nenhuma sessão ativa encontrada');
-                    setUser(null);
+                    console.error('Erro ao obter sessão:', error.message);
+                    return;
+                }
+
+                // Se existe sessão, definir o usuário
+                if (session) {
+                    setUser(session.user);
                 }
             } catch (error) {
                 console.error('Erro ao verificar autenticação:', error);
-                setUser(null);
             } finally {
                 setLoading(false);
             }
         };
 
-        getSession();
+        fetchUser();
 
-        // Configurar listener para mudanças de autenticação
+        // Configurar o listener para mudanças de autenticação
         const { data: { subscription } } = supabase.auth.onAuthStateChange(
-            (event, session) => {
-                console.log('Evento de autenticação:', event);
+            async (event, session) => {
+                console.log('Auth state changed:', event);
                 setUser(session?.user || null);
                 setLoading(false);
             }
@@ -91,98 +62,58 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         };
     }, []);
 
-    // Função para verificar se a sessão está válida
-    const checkSessionValid = async (): Promise<boolean> => {
-        try {
-            const { data, error } = await supabase.auth.getSession();
-
-            if (error || !data.session) {
-                return false;
-            }
-
-            return true;
-        } catch (error) {
-            console.error('Erro ao verificar validade da sessão:', error);
-            return false;
-        }
-    };
-
-    // Função para atualizar o token de acesso
-    const refreshSession = async (): Promise<boolean> => {
-        try {
-            const { data, error } = await supabase.auth.refreshSession();
-
-            if (error || !data.session) {
-                return false;
-            }
-
-            return true;
-        } catch (error) {
-            console.error('Erro ao atualizar sessão:', error);
-            return false;
-        }
-    };
-
-    // Função de login
+    // Login com email e senha
     const login = async (email: string, password: string) => {
         try {
+            setLoading(true);
+            setError(null);
+
+            // Fazer login com email/senha
             const { data, error } = await supabase.auth.signInWithPassword({
                 email,
                 password
             });
 
             if (error) {
-                console.error('Erro de login:', error);
-                return { data: null, error };
+                console.error('Erro de login:', error.message);
+                setError(error.message);
+                return { success: false, error: error.message };
             }
 
-            console.log('Login bem-sucedido:', data.user?.email);
+            // Login bem-sucedido
             setUser(data.user);
-
-            return { data, error: null };
-        } catch (error) {
-            console.error('Exceção durante login:', error);
-            return { data: null, error };
-        }
-    };
-
-    // Função de logout
-    const logout = async () => {
-        try {
-            setLoading(true);
-            const { error } = await supabase.auth.signOut();
-            if (error) {
-                console.error('Erro ao fazer logout:', error);
-                throw error;
-            }
-
-            setUser(null);
-            router.push('/login');
-        } catch (error) {
-            console.error('Exceção durante logout:', error);
+            return { success: true };
+        } catch (err: any) {
+            console.error('Exceção durante login:', err.message);
+            setError(err.message || 'Erro desconhecido no login');
+            return { success: false, error: err.message || 'Erro desconhecido no login' };
         } finally {
             setLoading(false);
         }
     };
 
-    // Valor do contexto
-    const value = {
-        user,
-        loading,
-        login,
-        logout,
-        checkSessionValid,
-        refreshSession
+    // Logout
+    const logout = async () => {
+        try {
+            setLoading(true);
+            await supabase.auth.signOut();
+            setUser(null);
+            router.push('/login');
+        } catch (err: any) {
+            console.error('Erro ao fazer logout:', err.message);
+        } finally {
+            setLoading(false);
+        }
     };
 
     return (
-        <AuthContext.Provider value={value}>
+        <AuthContext.Provider value={{ user, loading, error, login, logout }}>
             {children}
         </AuthContext.Provider>
     );
 }
 
-// Hook personalizado
+// Hook para usar o contexto de autenticação
 export function useAuth() {
     const context = useContext(AuthContext);
     if (context === undefined) {

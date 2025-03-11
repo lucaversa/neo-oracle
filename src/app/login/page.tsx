@@ -1,9 +1,7 @@
-// src/app/login/page.tsx - Versão com redirecionamento robusto
 'use client'
 
 import { useState, FormEvent, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 
 export default function Login() {
@@ -14,12 +12,20 @@ export default function Login() {
     const [successMessage, setSuccessMessage] = useState('');
     const router = useRouter();
     const searchParams = useSearchParams();
-    const { login } = useAuth();
+    const { user, login } = useAuth();
 
-    // Verificar mensagens do URL
+    // Verificar se já está autenticado ou se há mensagens no URL
     useEffect(() => {
+        // Se já estiver logado, redirecionar para o chat
+        if (user) {
+            router.push('/chat');
+            return;
+        }
+
+        // Verificar mensagens do URL
         const registered = searchParams.get('registered');
         const expired = searchParams.get('expired');
+        const errorParam = searchParams.get('error');
 
         if (registered === 'true') {
             setSuccessMessage('Conta criada com sucesso! Você já pode fazer login.');
@@ -28,35 +34,14 @@ export default function Login() {
         if (expired === 'true') {
             setError('Sua sessão expirou por inatividade. Por favor, faça login novamente.');
         }
-    }, [searchParams]);
 
-    // Verificar se já está autenticado
-    useEffect(() => {
-        const checkAuth = async () => {
-            try {
-                const { data } = await supabase.auth.getSession();
-                if (data.session) {
-                    console.log("Usuário já autenticado, redirecionando...");
-                    // Tentativa 1: usar router.push
-                    router.push('/chat');
-
-                    // Tentativa 2: fallback com setTimeout e window.location
-                    setTimeout(() => {
-                        console.log("Fallback: usando window.location para redirecionar");
-                        window.location.href = '/chat';
-                    }, 500);
-                }
-            } catch (err) {
-                console.error("Erro ao verificar autenticação:", err);
-            }
-        };
-
-        checkAuth();
-    }, [router]);
+        if (errorParam) {
+            setError(decodeURIComponent(errorParam));
+        }
+    }, [user, router, searchParams]);
 
     const handleLogin = async (e: FormEvent<HTMLFormElement>) => {
         e.preventDefault();
-        console.log("Form submitted with:", { email, password });
 
         if (!email || !password) {
             setError('Por favor, preencha todos os campos.');
@@ -64,64 +49,27 @@ export default function Login() {
         }
 
         try {
-            setLoading(true);
             setError('');
-
-            console.log("Iniciando login com:", email);
+            setLoading(true);
 
             // Usar o método de login do contexto de autenticação
-            const { data, error } = await login(email, password);
+            const result = await login(email, password);
 
-            if (error) {
-                console.error("Erro na autenticação:", error.message);
-                throw error;
+            if (!result.success) {
+                setError(result.error || 'Credenciais inválidas. Por favor, tente novamente.');
+                return;
             }
 
-            console.log("Login bem-sucedido:", data);
-            setSuccessMessage("Login realizado com sucesso! Redirecionando...");
+            // Login bem-sucedido
+            setSuccessMessage('Login realizado com sucesso! Redirecionando...');
 
-            // Estratégia 1: Tentar router.push imediatamente
+            // Redirecionar para a página de chat
             router.push('/chat');
 
-            // Estratégia 2: Tentar novamente após um pequeno delay
-            setTimeout(() => {
-                console.log("Tentando redirecionamento com delay");
-                router.push('/chat');
-            }, 300);
-
-            // Estratégia 3: Fallback com window.location após outro delay
-            setTimeout(() => {
-                console.log("Usando fallback para redirecionamento: window.location");
-                window.location.href = '/chat';
-            }, 800);
-
         } catch (err: any) {
-            console.error("Erro no processo de login:", err);
-            setError(`Falha no login: ${err.message || 'Erro desconhecido'}`);
+            console.error('Erro ao processar login:', err);
+            setError('Ocorreu um erro durante o login. Por favor, tente novamente.');
         } finally {
-            setLoading(false);
-        }
-    };
-
-    // Botão alternativo que força o redirecionamento
-    const handleForceRedirect = async () => {
-        try {
-            setLoading(true);
-
-            const { data, error } = await supabase.auth.getSession();
-
-            if (error) throw error;
-
-            if (data.session) {
-                // Força o redirecionamento usando window.location
-                window.location.href = '/chat';
-            } else {
-                setError("Você precisa fazer login primeiro");
-                setLoading(false);
-            }
-        } catch (err: any) {
-            console.error("Erro ao verificar sessão:", err);
-            setError(err.message || "Erro ao verificar sessão");
             setLoading(false);
         }
     };
@@ -409,30 +357,6 @@ export default function Login() {
                         </button>
                     </form>
 
-                    {/* Botão de redirecionamento forçado */}
-                    <button
-                        onClick={handleForceRedirect}
-                        disabled={loading}
-                        style={{
-                            display: 'flex',
-                            justifyContent: 'center',
-                            alignItems: 'center',
-                            width: '100%',
-                            padding: '12px',
-                            backgroundColor: '#10b981',
-                            color: 'white',
-                            border: 'none',
-                            borderRadius: '8px',
-                            fontSize: '15px',
-                            fontWeight: '500',
-                            cursor: loading ? 'not-allowed' : 'pointer',
-                            opacity: loading ? '0.7' : '1',
-                            marginBottom: '12px'
-                        }}
-                    >
-                        {loading ? 'Processando...' : 'Forçar Redirecionamento para Chat'}
-                    </button>
-
                     <div style={{
                         marginTop: '24px',
                         textAlign: 'center',
@@ -440,9 +364,6 @@ export default function Login() {
                         fontSize: '14px'
                     }}>
                         <p>Acesso restrito para usuários autorizados.</p>
-                        <p style={{ marginTop: '8px' }}>
-                            Status da conexão: <a href="/test-auth" style={{ color: '#3b82f6' }}>Verificar</a>
-                        </p>
                     </div>
                 </div>
             </div>

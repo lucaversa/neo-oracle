@@ -1,19 +1,45 @@
-/* globals.css */
+/* globals.css - com suporte melhorado para tema escuro */
 :root {
-  --primary-color: #3b82f6;
-  --primary-dark: #2563eb;
-  --primary-light: #60a5fa;
+  --primary-color: #4f46e5;
+  --primary-dark: #4338ca;
+  --primary-light: #818cf8;
   --secondary-color: #10b981;
   --secondary-dark: #059669;
-  --background-light: #f5f7fa;
-  --background-dark: #1e293b;
-  --text-dark: #1f2937;
-  --text-light: #f9fafb;
+
+  /* Cores dinâmicas que mudam com o tema */
+  --background-main: #f9fafb;
+  --background-elevated: #ffffff;
+  --background-subtle: #f3f4f6;
+  --text-primary: #1f2937;
+  --text-secondary: #4b5563;
+  --text-tertiary: #6b7280;
   --border-color: #e5e7eb;
+  --border-subtle: #f3f4f6;
+
   --success-color: #10b981;
   --error-color: #ef4444;
   --warning-color: #f59e0b;
   --info-color: #3b82f6;
+
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+}
+
+/* Variáveis para o tema escuro */
+.dark {
+  --background-main: #111827;
+  --background-elevated: #1f2937;
+  --background-subtle: #374151;
+  --text-primary: #f9fafb;
+  --text-secondary: #e5e7eb;
+  --text-tertiary: #d1d5db;
+  --border-color: #374151;
+  --border-subtle: #4b5563;
+
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -1px rgba(0, 0, 0, 0.2);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -2px rgba(0, 0, 0, 0.2);
 }
 
 * {
@@ -27,18 +53,14 @@ body {
   height: 100%;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen,
     Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
-  background-color: var(--background-light);
-  color: var(--text-dark);
+  background-color: var(--background-main);
+  color: var(--text-primary);
   line-height: 1.5;
+  transition: background-color 0.3s, color 0.3s;
 }
 
 body {
   overflow-x: hidden;
-}
-
-.dark {
-  background-color: var(--background-dark);
-  color: var(--text-light);
 }
 
 a {
@@ -83,6 +105,18 @@ a:hover {
 
   50% {
     opacity: 0.5;
+  }
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
   }
 }
 
@@ -159,13 +193,15 @@ a:hover {
   border: 1px solid var(--border-color);
   border-radius: 0.5rem;
   font-size: 1rem;
-  transition: border-color 0.15s, box-shadow 0.15s;
+  background-color: var(--background-elevated);
+  color: var(--text-primary);
+  transition: border-color 0.15s, box-shadow 0.15s, background-color 0.3s, color 0.3s;
 }
 
 .input-field:focus {
   outline: none;
   border-color: var(--primary-color);
-  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1);
+  box-shadow: 0 0 0 4px rgba(79, 70, 229, 0.1);
 }
 
 .btn {
@@ -200,14 +236,11 @@ a:hover {
 
 /* Cards e elementos de UI */
 .card {
-  background: white;
+  background: var(--background-elevated);
   border-radius: 1rem;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  box-shadow: var(--shadow-md);
   overflow: hidden;
-}
-
-.dark .card {
-  background: #1f2937;
+  transition: background-color 0.3s, box-shadow 0.3s;
 }
 
 /* Alertas */
@@ -220,25 +253,25 @@ a:hover {
 .alert-success {
   background-color: rgba(16, 185, 129, 0.1);
   border-left: 4px solid var(--success-color);
-  color: #065f46;
+  color: var(--success-color);
 }
 
 .alert-error {
   background-color: rgba(239, 68, 68, 0.1);
   border-left: 4px solid var(--error-color);
-  color: #b91c1c;
+  color: var(--error-color);
 }
 
 .alert-warning {
   background-color: rgba(245, 158, 11, 0.1);
   border-left: 4px solid var(--warning-color);
-  color: #92400e;
+  color: var(--warning-color);
 }
 
 .alert-info {
   background-color: rgba(59, 130, 246, 0.1);
   border-left: 4px solid var(--info-color);
-  color: #1e40af;
+  color: var(--info-color);
 }
 
 /* Espaçamento */
@@ -394,32 +427,20 @@ a:hover {
 }
 
 ::-webkit-scrollbar-track {
-  background: #f1f1f1;
+  background: var(--background-subtle);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #c1c1c1;
+  background: var(--border-color);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #a8a8a8;
-}
-
-.dark ::-webkit-scrollbar-track {
-  background: #1f2937;
-}
-
-.dark ::-webkit-scrollbar-thumb {
-  background: #4b5563;
-}
-
-.dark ::-webkit-scrollbar-thumb:hover {
-  background: #6b7280;
+  background: var(--text-tertiary);
 }
 
 /* Toque de personalidade */
 ::selection {
-  background: var(--primary-light);
+  background: var(--primary-color);
   color: white;
 }

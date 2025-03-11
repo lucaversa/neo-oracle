@@ -21,8 +21,11 @@ export function useChat(userId?: string): UseChatReturn {
     const [loading, setLoading] = useState<boolean>(false);
     const [error, setError] = useState<string | null>(null);
 
+    // Carregar sessões quando o userId mudar
     useEffect(() => {
         if (userId) {
+            setLoading(true);
+
             // Carregar sessões ativas
             loadActiveSessions().then(sessions => {
                 if (sessions && sessions.length > 0) {
@@ -32,16 +35,22 @@ export function useChat(userId?: string): UseChatReturn {
                     // Criar uma nova sessão se não existir nenhuma
                     createNewSession();
                 }
+                setLoading(false);
+            }).catch(err => {
+                console.error('Erro ao carregar sessões:', err);
+                setError('Não foi possível carregar suas conversas anteriores');
+                setLoading(false);
             });
         }
     }, [userId]);
 
+    // Carregar mensagens quando o sessionId mudar
     useEffect(() => {
         if (sessionId) {
             // Carregar mensagens da sessão atual
             loadMessages(sessionId);
 
-            // Configurar subscription para novas mensagens
+            // Configurar subscription para novas mensagens em tempo real
             const channel = supabase
                 .channel(`chat_updates:${sessionId}`)
                 .on('postgres_changes', {
@@ -81,9 +90,9 @@ export function useChat(userId?: string): UseChatReturn {
             } else {
                 setMessages([]);
             }
-        } catch (err) {
-            setError('Erro ao carregar mensagens');
-            console.error(err);
+        } catch (err: any) {
+            console.error('Erro ao carregar mensagens:', err);
+            setError('Erro ao carregar mensagens: ' + (err.message || 'Erro desconhecido'));
         } finally {
             setLoading(false);
         }
@@ -106,7 +115,7 @@ export function useChat(userId?: string): UseChatReturn {
             }
 
             return [];
-        } catch (err) {
+        } catch (err: any) {
             console.error('Erro ao carregar sessões:', err);
             return null;
         }
@@ -119,7 +128,7 @@ export function useChat(userId?: string): UseChatReturn {
             // Criar mensagem do usuário
             const userMessage: ChatMessage = {
                 type: 'human',
-                content: content
+                content: content.trim()
             };
 
             // Adicionar mensagem localmente para UI instantânea
@@ -135,7 +144,7 @@ export function useChat(userId?: string): UseChatReturn {
 
             if (error) throw error;
 
-            // Enviar para webhook do n8n
+            // Enviar para webhook do n8n (se configurado)
             const webhookUrl = process.env.NEXT_PUBLIC_N8N_WEBHOOK_URL;
             if (webhookUrl) {
                 const response = await fetch(webhookUrl, {
@@ -155,15 +164,39 @@ export function useChat(userId?: string): UseChatReturn {
                 }
             } else {
                 console.warn('URL do webhook não configurada');
+
+                // Se não houver webhook configurado, simular uma resposta do assistente
+                setTimeout(() => {
+                    const aiMessage: ChatMessage = {
+                        type: 'ai',
+                        content: `Recebi sua mensagem: "${content}". Esta é uma resposta automática.`
+                    };
+
+                    // Adicionar resposta simulada ao estado local
+                    setMessages(prevMessages => [...prevMessages, aiMessage]);
+
+                    // Salvar no Supabase
+                    supabase
+                        .from('n8n_chat_histories')
+                        .insert([{
+                            session_id: sessionId,
+                            message: aiMessage
+                        }])
+                        .then(({ error }) => {
+                            if (error) console.error('Erro ao salvar resposta simulada:', error);
+                        });
+                }, 1000);
             }
-        } catch (err) {
-            setError('Erro ao enviar mensagem');
-            console.error(err);
+        } catch (err: any) {
+            console.error('Erro ao enviar mensagem:', err);
+            setError('Erro ao enviar mensagem: ' + (err.message || 'Erro desconhecido'));
         }
     };
 
     const changeSession = (newSessionId: string) => {
-        setSessionId(newSessionId);
+        if (newSessionId !== sessionId) {
+            setSessionId(newSessionId);
+        }
     };
 
     const createNewSession = async (): Promise<string | null> => {
@@ -193,9 +226,9 @@ export function useChat(userId?: string): UseChatReturn {
             setActiveSessions(prev => [newSessionId, ...prev]);
 
             return newSessionId;
-        } catch (err) {
+        } catch (err: any) {
             console.error('Erro ao criar nova sessão:', err);
-            setError('Não foi possível criar uma nova conversa');
+            setError('Não foi possível criar uma nova conversa: ' + (err.message || 'Erro desconhecido'));
             return null;
         }
     };

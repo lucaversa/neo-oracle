@@ -1,9 +1,8 @@
-// src/components/auth/SessionTimeout.tsx
 'use client'
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/context/AuthContext';
 
 interface SessionTimeoutProps {
     timeoutMinutes?: number; // Tempo em minutos antes da expiração
@@ -15,6 +14,7 @@ export default function SessionTimeout({
     warningMinutes = 5   // Aviso 5 minutos antes
 }: SessionTimeoutProps) {
     const router = useRouter();
+    const { logout } = useAuth();
     const [showWarning, setShowWarning] = useState(false);
     const [timeLeft, setTimeLeft] = useState<number | null>(null);
 
@@ -63,10 +63,8 @@ export default function SessionTimeout({
         // Função para lidar com o timeout
         const handleTimeout = async () => {
             try {
-                // Fazer logout
-                await supabase.auth.signOut();
-
-                // Redirecionar para login
+                // Fazer logout e redirecionar
+                await logout();
                 router.push('/login?expired=true');
             } catch (error) {
                 console.error('Erro ao encerrar sessão:', error);
@@ -103,7 +101,7 @@ export default function SessionTimeout({
             window.removeEventListener('scroll', handleActivity);
             window.removeEventListener('touchstart', handleActivity);
         };
-    }, [timeoutMs, warningMs, router]);
+    }, [timeoutMs, warningMs, router, logout]);
 
     if (!showWarning) {
         return null;
@@ -124,7 +122,7 @@ export default function SessionTimeout({
                 <div className="flex justify-end space-x-2">
                     <button
                         onClick={async () => {
-                            await supabase.auth.signOut();
+                            await logout();
                             router.push('/login');
                         }}
                         className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"

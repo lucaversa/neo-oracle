@@ -12,7 +12,6 @@ import Sidebar from '@/components/layout/Sidebar';
 
 export default function ChatPage() {
     const [sidebarOpen, setSidebarOpen] = useState(false);
-    const [isThinking, setIsThinking] = useState(false);
     const { user, loading: authLoading, logout } = useAuth();
     const { isDarkMode } = useTheme();
     const router = useRouter();
@@ -33,7 +32,8 @@ export default function ChatPage() {
         sendMessage,
         changeSession,
         createNewSession,
-        activeSessions
+        activeSessions,
+        isProcessing // Novo estado para controlar quando o Oráculo está processando
     } = useChat(user?.id);
 
     // Mostrar um loading state enquanto verifica a autenticação
@@ -62,23 +62,6 @@ export default function ChatPage() {
     if (!user) {
         return null;
     }
-
-    // Versão modificada do sendMessage que mostra o estado "pensando"
-    const handleSendMessage = async (content: string) => {
-        if (!content.trim()) return;
-
-        // Mostrar indicador de "pensando"
-        setIsThinking(true);
-
-        try {
-            await sendMessage(content);
-        } finally {
-            // Esconder indicador após alguns segundos para simular resposta
-            setTimeout(() => {
-                setIsThinking(false);
-            }, 2000);
-        }
-    };
 
     const handleToggleSidebar = () => {
         setSidebarOpen(!sidebarOpen);
@@ -219,22 +202,93 @@ export default function ChatPage() {
                                 </p>
                             </div>
                         ) : (
-                            messages.map((message, index) => (
-                                <ChatBubble
-                                    key={index}
-                                    message={message}
-                                    userName={userName}
-                                />
-                            ))
+                            <>
+                                {messages.map((message, index) => (
+                                    <ChatBubble
+                                        key={index}
+                                        message={message}
+                                        userName={userName}
+                                    />
+                                ))}
+
+                                {/* Indicador de "digitando" quando estiver processando */}
+                                {isProcessing && (
+                                    <div style={{
+                                        display: 'flex',
+                                        alignItems: 'flex-start',
+                                        marginBottom: '24px',
+                                        gap: '12px'
+                                    }}>
+                                        <div style={{
+                                            width: '40px',
+                                            height: '40px',
+                                            borderRadius: '50%',
+                                            backgroundColor: '#4f46e5',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            color: 'white',
+                                            fontSize: '16px',
+                                            fontWeight: 'bold',
+                                            boxShadow: 'var(--shadow-md)',
+                                            flexShrink: 0
+                                        }}>
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z" />
+                                                <path d="M12 8v4l3 3" />
+                                                <path d="M12 16h.01" />
+                                            </svg>
+                                        </div>
+                                        <div style={{
+                                            maxWidth: '80%',
+                                            borderRadius: '18px',
+                                            padding: '12px 16px',
+                                            backgroundColor: isDarkMode ? 'var(--background-subtle)' : 'var(--background-subtle)',
+                                            color: 'var(--text-primary)',
+                                            boxShadow: 'var(--shadow-sm)',
+                                            position: 'relative',
+                                            borderBottomLeftRadius: '4px'
+                                        }}>
+                                            <div style={{
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '4px'
+                                            }}>
+                                                <span style={{
+                                                    height: '8px',
+                                                    width: '8px',
+                                                    borderRadius: '50%',
+                                                    backgroundColor: '#4f46e5',
+                                                    animation: 'pulse 1.5s infinite'
+                                                }}></span>
+                                                <span style={{
+                                                    height: '8px',
+                                                    width: '8px',
+                                                    borderRadius: '50%',
+                                                    backgroundColor: '#4f46e5',
+                                                    animation: 'pulse 1.5s infinite 0.3s'
+                                                }}></span>
+                                                <span style={{
+                                                    height: '8px',
+                                                    width: '8px',
+                                                    borderRadius: '50%',
+                                                    backgroundColor: '#4f46e5',
+                                                    animation: 'pulse 1.5s infinite 0.6s'
+                                                }}></span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                            </>
                         )}
                     </div>
                 </div>
 
                 {/* Input area */}
                 <ChatInput
-                    onSendMessage={handleSendMessage}
+                    onSendMessage={sendMessage}
                     disabled={loading}
-                    isThinking={isThinking}
+                    isThinking={isProcessing}
                 />
             </div>
         </div>

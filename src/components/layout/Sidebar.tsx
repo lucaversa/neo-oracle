@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useTheme } from '@/context/ThemeContext';
 import { supabase } from '@/lib/supabase';
+import TypingEffect from '@/components/chat/TypingEffect';
 
 interface SidebarProps {
     isOpen: boolean;
@@ -10,12 +11,15 @@ interface SidebarProps {
     onSessionSelect: (sessionId: string) => void;
     onNewSession: () => Promise<string | null>;
     userId?: string;
-    isCreatingSession?: boolean; // Nova propriedade
+    isCreatingSession?: boolean;
+    isNewConversation?: boolean; // Nova propriedade
+    lastMessageTimestamp?: number; // Nova propriedade para forçar atualização
 }
 
 interface SessionInfo {
     id: string;
     firstMessage: string;
+    isNew?: boolean; // Propriedade para controlar efeito de digitação
 }
 
 export default function Sidebar({
@@ -26,7 +30,9 @@ export default function Sidebar({
     onSessionSelect,
     onNewSession,
     userId,
-    isCreatingSession = false
+    isCreatingSession = false,
+    isNewConversation = false,
+    lastMessageTimestamp = 0
 }: SidebarProps) {
     const [creating, setCreating] = useState(false);
     const [sessionInfos, setSessionInfos] = useState<Map<string, SessionInfo>>(new Map());
@@ -53,13 +59,20 @@ export default function Sidebar({
             console.log('Carregando informações para sessões:', activeSessions);
             const newSessionInfos = new Map<string, SessionInfo>();
 
-            for (const sessionId of activeSessions) {
+            // Manter informações existentes para não perder o estado "isNew"
+            const existingInfos = Array.from(sessionInfos.entries());
+            for (const [id, info] of existingInfos) {
+                newSessionInfos.set(id, { ...info });
+            }
+
+            // Processar sessões em paralelo usando Promise.all para melhorar performance
+            await Promise.all(activeSessions.map(async (sessionId) => {
                 try {
                     // Garantir que o ID da sessão esteja sem espaços extras
                     const trimmedSessionId = sessionId.trim();
                     console.log('Carregando info para sessão:', trimmedSessionId);
 
-                    // Buscar mensagens desta sessão considerando possíveis versões com espaço
+                    // Buscar apenas mensagens humanas para esta sessão, em ordem
                     const { data, error } = await supabase
                         .from('n8n_chat_histories')
                         .select('message')
@@ -71,7 +84,7 @@ export default function Sidebar({
                         throw error;
                     }
 
-                    console.log(`Encontrados ${data?.length || 0} registros`);
+                    console.log(`Encontrados ${data?.length || 0} registros para sessão ${trimmedSessionId}`);
 
                     let firstMessage = 'Nova conversa';
 
@@ -94,35 +107,44 @@ export default function Sidebar({
                             const content = humanMessages[0].message.content;
 
                             // Truncar se necessário
-                            firstMessage = content.length > 25
-                                ? content.substring(0, 25) + '...'
+                            firstMessage = content.length > 30
+                                ? content.substring(0, 30) + '...'
                                 : content;
 
-                            console.log('Primeira mensagem:', firstMessage);
+                            console.log(`Primeira mensagem para ${trimmedSessionId}:`, firstMessage);
                         }
                     }
 
+                    // Verificar se já temos info para esta sessão
+                    const existingInfo = sessionInfos.get(trimmedSessionId);
+                    const isNewSession = !existingInfo; // É nova se não existia antes
+                    const messageChanged = existingInfo && existingInfo.firstMessage !== firstMessage &&
+                        firstMessage !== 'Nova conversa'; // Mensagem mudou e não é o padrão
+
                     newSessionInfos.set(trimmedSessionId, {
                         id: trimmedSessionId,
-                        firstMessage
+                        firstMessage,
+                        // Marcar como nova se não existia antes ou se a mensagem mudou
+                        isNew: isNewSession || messageChanged
                     });
-
                 } catch (err) {
                     console.error('Erro ao processar sessão:', err);
                     // Usar nome padrão em caso de erro
                     const trimmedId = sessionId.trim();
                     newSessionInfos.set(trimmedId, {
                         id: trimmedId,
-                        firstMessage: `Conversa ${trimmedId.substring(0, 5)}...`
+                        firstMessage: `Conversa ${trimmedId.substring(0, 5)}...`,
+                        isNew: false
                     });
                 }
-            }
+            }));
 
+            // Atualizar estado com todas as informações das sessões
             setSessionInfos(newSessionInfos);
         };
 
         loadSessionInfos();
-    }, [activeSessions]);
+    }, [activeSessions, lastMessageTimestamp]); // Adicionamos lastMessageTimestamp para forçar recarregamento
 
     const handleNewSession = async () => {
         if (creating || isCreatingSession) return; // Evitar múltiplos cliques
@@ -134,18 +156,6 @@ export default function Sidebar({
         } catch (error) {
             console.error("Erro ao criar nova sessão:", error);
         }
-    };
-
-    // Função para obter nome amigável para a sessão
-    const getSessionName = (sessionId: string, index: number): string => {
-        // Se temos informações sobre a sessão, usar a primeira mensagem
-        const trimmedId = sessionId.trim();
-        if (sessionInfos.has(trimmedId)) {
-            return sessionInfos.get(trimmedId)!.firstMessage;
-        }
-
-        // Fallback para índice
-        return `Conversa ${index + 1}`;
     };
 
     // Função para verificar se todas as sessões têm o mesmo ID
@@ -334,9 +344,11 @@ export default function Sidebar({
                         flexDirection: 'column',
                         gap: '6px'
                     }}>
+                        {/* Garantir que as sessões permaneçam na ordem original (mais recentes primeiro) */}
                         {uniqueSessions.map((session, index) => {
                             const trimmedSession = session.trim();
-                            const isActive = currentSessionId.trim() === trimmedSession;
+                            // Consideramos uma sessão ativa se o ID corresponder E não estamos em uma nova conversa
+                            const isActive = currentSessionId.trim() === trimmedSession && !isNewConversation;
 
                             return (
                                 <li key={trimmedSession}>
@@ -384,7 +396,25 @@ export default function Sidebar({
                                             overflow: 'hidden',
                                             textOverflow: 'ellipsis'
                                         }}>
-                                            {getSessionName(trimmedSession, index)}
+                                            {sessionInfos.has(trimmedSession) && sessionInfos.get(trimmedSession)!.isNew ? (
+                                                <TypingEffect
+                                                    text={sessionInfos.get(trimmedSession)!.firstMessage}
+                                                    typingSpeed={15}
+                                                    onComplete={() => {
+                                                        // Remover a flag isNew após completar a animação
+                                                        const updatedInfos = new Map(sessionInfos);
+                                                        const info = updatedInfos.get(trimmedSession);
+                                                        if (info) {
+                                                            updatedInfos.set(trimmedSession, { ...info, isNew: false });
+                                                            setSessionInfos(updatedInfos);
+                                                        }
+                                                    }}
+                                                />
+                                            ) : (
+                                                sessionInfos.has(trimmedSession)
+                                                    ? sessionInfos.get(trimmedSession)!.firstMessage
+                                                    : `Conversa ${trimmedSession.substring(0, 8)}...`
+                                            )}
                                         </span>
                                     </button>
                                 </li>

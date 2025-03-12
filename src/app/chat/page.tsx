@@ -20,7 +20,6 @@ export default function ChatPage() {
     const lastMessageCountRef = useRef<number>(0);
     const creatingSessionRef = useRef<boolean>(false);
     const [isCreatingNewSession, setIsCreatingNewSession] = useState(false);
-    const [newSessionId, setNewSessionId] = useState<string | null>(null);
 
     // Proteger a rota - redirecionar se não estiver autenticado
     useEffect(() => {
@@ -40,22 +39,11 @@ export default function ChatPage() {
         createNewSession,
         activeSessions,
         isProcessing,
-        sessionLimitReached
+        sessionLimitReached,
+        isNewConversation,
+        lastMessageTimestamp,
+        resetProcessingState
     } = useChat(user?.id);
-
-    // Efeito para garantir que o ID da nova sessão seja aplicado corretamente
-    useEffect(() => {
-        if (newSessionId && sessionId !== newSessionId) {
-            // Se temos um novo ID de sessão mas ele ainda não foi aplicado no hook
-            console.log(`Atualizando ID da sessão: ${sessionId} -> ${newSessionId}`);
-            changeSession(newSessionId);
-        } else if (newSessionId && sessionId === newSessionId && isCreatingNewSession) {
-            // Se a sessão foi atualizada, finalizamos a criação
-            console.log('Nova sessão aplicada com sucesso:', newSessionId);
-            setIsCreatingNewSession(false);
-            setNewSessionId(null);
-        }
-    }, [newSessionId, sessionId, isCreatingNewSession, changeSession]);
 
     // Rolar para o final da conversa quando novas mensagens chegarem
     useEffect(() => {
@@ -74,6 +62,25 @@ export default function ChatPage() {
             lastMessageCountRef.current = messages.length;
         }
     }, [messages]);
+
+    // Verificar se o estado de processamento está travado por muito tempo
+    useEffect(() => {
+        let processingTimer: NodeJS.Timeout | null = null;
+
+        if (isProcessing) {
+            // Se o estado de processamento ficar ativo por mais de 20 segundos, resetar
+            processingTimer = setTimeout(() => {
+                console.log('Estado de processamento ativo por muito tempo, resetando...');
+                resetProcessingState();
+            }, 20000); // 20 segundos
+        }
+
+        return () => {
+            if (processingTimer) {
+                clearTimeout(processingTimer);
+            }
+        };
+    }, [isProcessing, resetProcessingState]);
 
     // Mostrar um loading state enquanto verifica a autenticação
     if (authLoading) {
@@ -103,6 +110,11 @@ export default function ChatPage() {
         if (creatingSessionRef.current || isCreatingNewSession) return null;
 
         try {
+            // Resetar o estado de processamento se estiver ativo
+            if (isProcessing) {
+                resetProcessingState();
+            }
+
             // Iniciar estado de "criando nova sessão"
             setIsCreatingNewSession(true);
             creatingSessionRef.current = true;
@@ -113,37 +125,25 @@ export default function ChatPage() {
             const generatedSessionId = uuidv4();
             console.log(">> Novo UUID gerado:", generatedSessionId);
 
-            // Armazenar o novo ID
-            setNewSessionId(generatedSessionId);
-
             // Chamar a função do hook com o ID específico
             const result = await createNewSession(generatedSessionId);
 
             console.log(">> Resultado da criação da nova sessão:", result);
 
-            // Garantir que o novo ID é usado
-            if (result) {
-                // Forçamos uma atualização imediata da interface
-                changeSession(generatedSessionId);
-
-                // Rolar para o topo para mostrar o chat vazio
-                if (chatContainerRef.current) {
-                    chatContainerRef.current.scrollTop = 0;
-                }
-
-                console.log(">> Nova conversa iniciada com ID:", generatedSessionId);
-                return generatedSessionId;
+            // Rolar para o topo para mostrar o chat vazio
+            if (chatContainerRef.current) {
+                chatContainerRef.current.scrollTop = 0;
             }
 
-            return result;
+            console.log(">> Nova conversa iniciada com ID:", generatedSessionId);
+            return generatedSessionId;
         } catch (error) {
             console.error(">> Erro ao criar nova sessão:", error);
-            setIsCreatingNewSession(false);
-            setNewSessionId(null);
             return null;
         } finally {
             setTimeout(() => {
                 creatingSessionRef.current = false;
+                setIsCreatingNewSession(false);
             }, 500);
         }
     };
@@ -153,6 +153,12 @@ export default function ChatPage() {
         if (isCreatingNewSession) {
             console.log("Aguardando criação da nova sessão para enviar mensagem...");
             return;
+        }
+
+        // Se o estado isProcessing estiver preso, resetar manualmente
+        if (isProcessing && messages.length >= 2 && messages[messages.length - 1].type === 'ai') {
+            console.log('Estado de processamento parece inconsistente, resetando...');
+            resetProcessingState();
         }
 
         if (sessionLimitReached) {
@@ -166,10 +172,24 @@ export default function ChatPage() {
             }
         } else {
             await sendMessage(content);
+
+            // Verificar novamente se o estado de processamento foi aplicado
+            // Verificar novamente se o estado de processamento foi aplicado
+            if (!isProcessing && messages.length > 0 && messages[messages.length - 1].type === 'human') {
+                console.log('Estado de processamento não aplicado, forçando...');
+                // Não podemos usar setIsProcessing diretamente, então usamos uma abordagem alternativa
+                setTimeout(() => {
+                    // Esta é uma solução temporária - na próxima iteração do polling 
+                    // o estado deve ser atualizado automaticamente
+                    resetProcessingState(); // Resetamos primeiro para garantir estado limpo
+                    sendMessage(content); // Re-enviamos para garantir que o processamento seja aplicado
+                }, 300);
+                return; // Importante: retornar para evitar envio duplicado
+            }
         }
     };
 
-    if (loading && messages.length === 0 && !isCreatingNewSession) {
+    if (loading && !isNewConversation && messages.length === 0 && !isCreatingNewSession) {
         return (
             <div className="flex items-center justify-center h-screen bg-background-main">
                 <div className="w-12 h-12 border-4 border-border-color border-t-primary-color rounded-full animate-spin"></div>
@@ -196,6 +216,8 @@ export default function ChatPage() {
                 onNewSession={handleNewSession}
                 userId={user?.id}
                 isCreatingSession={isCreatingNewSession}
+                isNewConversation={isNewConversation}
+                lastMessageTimestamp={lastMessageTimestamp}
             />
 
             {/* Main content */}
@@ -239,7 +261,12 @@ export default function ChatPage() {
                             gap: '16px'
                         }}>
                             <div className="w-12 h-12 border-4 border-border-color border-t-primary-color rounded-full animate-spin"></div>
-                            <p style={{ color: 'var(--text-primary)' }}>Criando nova conversa...</p>
+                            <p style={{
+                                color: 'var(--text-primary)',
+                                textAlign: 'center',
+                                width: '100%',
+                                fontWeight: '500'
+                            }}>Criando nova conversa...</p>
                         </div>
                     </div>
                 )}
@@ -293,7 +320,7 @@ export default function ChatPage() {
                             </div>
                         )}
 
-                        {messages.length === 0 ? (
+                        {(messages.length === 0 || isNewConversation) ? (
                             <div style={{
                                 textAlign: 'center',
                                 padding: '60px 20px',

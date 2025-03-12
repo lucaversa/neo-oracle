@@ -3,6 +3,7 @@
 import { useState, FormEvent, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
+import { useTheme } from '@/context/ThemeContext';
 
 export default function Login() {
     const [email, setEmail] = useState('');
@@ -13,6 +14,7 @@ export default function Login() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const { user, login } = useAuth();
+    const { isDarkMode, toggleDarkMode } = useTheme();
 
     // Verificar se já está autenticado ou se há mensagens no URL
     useEffect(() => {
@@ -56,7 +58,20 @@ export default function Login() {
             const result = await login(email, password);
 
             if (!result.success) {
-                setError(result.error || 'Credenciais inválidas. Por favor, tente novamente.');
+                // Tratando diferentes tipos de erro com mensagens específicas
+                if (result.error?.includes('invalid')) {
+                    setError('Credenciais inválidas. Verifique seu email e senha.');
+                } else if (result.error?.includes('not found') || result.error?.includes('user') || result.error?.includes('no user')) {
+                    setError('Usuário não encontrado. Verifique seu email ou contacte o administrador.');
+                } else if (result.error?.includes('locked') || result.error?.includes('disabled')) {
+                    setError('Conta bloqueada ou desativada. Entre em contato com o administrador.');
+                } else if (result.error?.includes('network') || result.error?.includes('connection')) {
+                    setError('Erro de conexão. Verifique sua internet e tente novamente.');
+                } else if (result.error?.includes('many') || result.error?.includes('attempts')) {
+                    setError('Muitas tentativas de login. Aguarde alguns minutos e tente novamente.');
+                } else {
+                    setError(result.error || 'Erro ao realizar login. Por favor, tente novamente.');
+                }
                 return;
             }
 
@@ -68,7 +83,21 @@ export default function Login() {
 
         } catch (err: any) {
             console.error('Erro ao processar login:', err);
-            setError('Ocorreu um erro durante o login. Por favor, tente novamente.');
+
+            // Tratamento mais detalhado de erros de exceção
+            if (err.message?.includes('network') || err.code === 'NETWORK_ERROR' || !navigator.onLine) {
+                setError('Erro de conexão. Verifique sua internet e tente novamente.');
+            } else if (err.message?.includes('timeout') || err.code === 'TIMEOUT') {
+                setError('O servidor demorou para responder. Tente novamente em alguns instantes.');
+            } else if (err.message?.includes('server') || err.status >= 500) {
+                setError('Erro no servidor. Nossa equipe foi notificada. Tente novamente mais tarde.');
+            } else if (err.status === 429) {
+                setError('Muitas tentativas. Aguarde alguns minutos antes de tentar novamente.');
+            } else if (err.status === 403) {
+                setError('Acesso negado. Verifique se você tem permissão para acessar o sistema.');
+            } else {
+                setError('Ocorreu um erro durante o login. Por favor, tente novamente.');
+            }
         } finally {
             setLoading(false);
         }
@@ -80,67 +109,153 @@ export default function Login() {
             display: 'flex',
             justifyContent: 'center',
             alignItems: 'center',
-            background: 'linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%)',
-            padding: '20px'
+            backgroundColor: 'var(--background-main)',
+            backgroundImage: isDarkMode
+                ? 'radial-gradient(circle at top right, rgba(79, 70, 229, 0.1) 0%, transparent 60%), radial-gradient(circle at bottom left, rgba(16, 185, 129, 0.05) 0%, transparent 50%)'
+                : 'radial-gradient(circle at top right, rgba(79, 70, 229, 0.15) 0%, transparent 60%), radial-gradient(circle at bottom left, rgba(16, 185, 129, 0.1) 0%, transparent 50%)',
+            padding: '20px',
+            transition: 'background-color 0.3s, color 0.3s'
         }}>
+            {/* Toggle Theme Button */}
+            <button
+                onClick={toggleDarkMode}
+                style={{
+                    position: 'absolute',
+                    top: '20px',
+                    right: '20px',
+                    backgroundColor: 'transparent',
+                    border: 'none',
+                    color: 'var(--text-tertiary)',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: '8px',
+                    borderRadius: '50%',
+                    transition: 'background-color 0.3s'
+                }}
+                aria-label={isDarkMode ? "Mudar para modo claro" : "Mudar para modo escuro"}
+            >
+                {isDarkMode ? (
+                    <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <circle cx="12" cy="12" r="5"></circle>
+                        <line x1="12" y1="1" x2="12" y2="3"></line>
+                        <line x1="12" y1="21" x2="12" y2="23"></line>
+                        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+                        <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+                        <line x1="1" y1="12" x2="3" y2="12"></line>
+                        <line x1="21" y1="12" x2="23" y2="12"></line>
+                        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+                        <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+                    </svg>
+                ) : (
+                    <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+                    </svg>
+                )}
+            </button>
+
             <div style={{
                 width: '100%',
                 maxWidth: '420px',
-                backgroundColor: '#fff',
+                backgroundColor: 'var(--background-elevated)',
                 borderRadius: '16px',
-                boxShadow: '0 10px 25px rgba(0, 0, 0, 0.08)',
-                overflow: 'hidden'
+                boxShadow: 'var(--shadow-lg)',
+                overflow: 'hidden',
+                transition: 'background-color 0.3s, box-shadow 0.3s',
+                animation: 'fadeIn 0.5s ease-out'
             }}>
                 {/* Cabeçalho */}
                 <div style={{
                     padding: '40px 30px 30px',
-                    background: 'linear-gradient(135deg, #0ea5e9 0%, #3b82f6 100%)',
+                    background: 'linear-gradient(135deg, var(--primary-color) 0%, var(--primary-dark) 100%)',
                     color: 'white',
-                    textAlign: 'center'
+                    textAlign: 'center',
+                    position: 'relative',
+                    overflow: 'hidden'
                 }}>
+                    {/* Elementos decorativos */}
                     <div style={{
-                        width: '80px',
-                        height: '80px',
-                        margin: '0 auto 20px',
-                        backgroundColor: 'rgba(255, 255, 255, 0.2)',
+                        position: 'absolute',
+                        top: '-50px',
+                        right: '-50px',
+                        width: '200px',
+                        height: '200px',
                         borderRadius: '50%',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        fontSize: '28px',
-                        fontWeight: 'bold',
-                        boxShadow: '0 8px 16px rgba(0, 0, 0, 0.1)'
+                        background: 'radial-gradient(circle, rgba(255,255,255,0.2) 0%, rgba(255,255,255,0) 70%)',
+                        zIndex: 1
+                    }}></div>
+                    <div style={{
+                        position: 'absolute',
+                        bottom: '-30px',
+                        left: '-30px',
+                        width: '150px',
+                        height: '150px',
+                        borderRadius: '50%',
+                        background: 'radial-gradient(circle, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0) 70%)',
+                        zIndex: 1
+                    }}></div>
+
+                    <div style={{
+                        position: 'relative',
+                        zIndex: 2
                     }}>
-                        OR
+                        <div style={{
+                            width: '80px',
+                            height: '80px',
+                            margin: '0 auto 20px',
+                            backgroundColor: 'rgba(255, 255, 255, 0.15)',
+                            borderRadius: '50%',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: '28px',
+                            fontWeight: 'bold',
+                            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.1)',
+                            backdropFilter: 'blur(4px)',
+                            border: '2px solid rgba(255, 255, 255, 0.1)'
+                        }}>
+                            OR
+                        </div>
+                        <h1 style={{
+                            fontSize: '24px',
+                            fontWeight: 'bold',
+                            marginBottom: '8px'
+                        }}>
+                            Oráculo Empresarial
+                        </h1>
+                        <p style={{
+                            fontSize: '14px',
+                            opacity: '0.9'
+                        }}>
+                            Acesse sua conta para continuar
+                        </p>
                     </div>
-                    <h1 style={{
-                        fontSize: '24px',
-                        fontWeight: 'bold',
-                        marginBottom: '8px'
-                    }}>
-                        Oráculo Empresarial
-                    </h1>
-                    <p style={{
-                        fontSize: '14px',
-                        opacity: '0.9'
-                    }}>
-                        Acesse sua conta para continuar
-                    </p>
                 </div>
 
                 {/* Formulário */}
-                <div style={{ padding: '30px' }}>
+                <div style={{
+                    padding: '30px',
+                    transition: 'background-color 0.3s'
+                }}>
                     {successMessage && (
                         <div style={{
                             padding: '12px 16px',
                             backgroundColor: 'rgba(16, 185, 129, 0.1)',
-                            borderLeft: '4px solid #10b981',
-                            borderRadius: '4px',
+                            borderLeft: '4px solid var(--success-color)',
+                            borderRadius: '8px',
                             marginBottom: '20px',
-                            color: '#065f46',
-                            fontSize: '14px'
+                            color: 'var(--success-color)',
+                            fontSize: '14px',
+                            animation: 'fadeIn 0.3s ease-out'
                         }}>
-                            {successMessage}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                                    <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                                </svg>
+                                {successMessage}
+                            </div>
                         </div>
                     )}
 
@@ -148,13 +263,21 @@ export default function Login() {
                         <div style={{
                             padding: '12px 16px',
                             backgroundColor: 'rgba(239, 68, 68, 0.1)',
-                            borderLeft: '4px solid #ef4444',
-                            borderRadius: '4px',
+                            borderLeft: '4px solid var(--error-color)',
+                            borderRadius: '8px',
                             marginBottom: '20px',
-                            color: '#b91c1c',
-                            fontSize: '14px'
+                            color: 'var(--error-color)',
+                            fontSize: '14px',
+                            animation: 'fadeIn 0.3s ease-out'
                         }}>
-                            {error}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <circle cx="12" cy="12" r="10"></circle>
+                                    <line x1="12" y1="8" x2="12" y2="12"></line>
+                                    <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                                </svg>
+                                {error}
+                            </div>
                         </div>
                     )}
 
@@ -167,7 +290,8 @@ export default function Login() {
                                     marginBottom: '8px',
                                     fontSize: '14px',
                                     fontWeight: '500',
-                                    color: '#374151'
+                                    color: 'var(--text-primary)',
+                                    transition: 'color 0.3s'
                                 }}
                             >
                                 Email
@@ -181,37 +305,42 @@ export default function Login() {
                                     required
                                     style={{
                                         width: '100%',
-                                        padding: '12px 12px 12px 40px',
-                                        border: '1px solid #d1d5db',
-                                        borderRadius: '8px',
+                                        padding: '14px 14px 14px 46px',
+                                        border: '1px solid var(--border-color)',
+                                        borderRadius: '12px',
                                         fontSize: '15px',
-                                        outline: 'none'
+                                        outline: 'none',
+                                        backgroundColor: 'var(--background-main)',
+                                        color: 'var(--text-primary)',
+                                        transition: 'all 0.3s',
+                                        boxShadow: 'var(--shadow-sm)'
                                     }}
                                     placeholder="seu@email.com"
                                     value={email}
                                     onChange={(e) => setEmail(e.target.value)}
                                 />
-                                <svg
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    viewBox="0 0 20 20"
-                                    fill="currentColor"
-                                    style={{
-                                        position: 'absolute',
-                                        left: '12px',
-                                        top: '50%',
-                                        transform: 'translateY(-50%)',
-                                        width: '20px',
-                                        height: '20px',
-                                        color: '#9ca3af'
-                                    }}
-                                >
-                                    <path d="M3 4a2 2 0 00-2 2v1.161l8.441 4.221a1.25 1.25 0 001.118 0L19 7.162V6a2 2 0 00-2-2H3z" />
-                                    <path d="M19 8.839l-7.77 3.885a2.75 2.75 0 01-2.46 0L1 8.839V14a2 2 0 002 2h14a2 2 0 002-2V8.839z" />
-                                </svg>
+                                <div style={{
+                                    position: 'absolute',
+                                    left: '14px',
+                                    top: '50%',
+                                    transform: 'translateY(-50%)',
+                                    width: '22px',
+                                    height: '22px',
+                                    color: 'var(--text-tertiary)',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    transition: 'color 0.3s'
+                                }}>
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
+                                        <polyline points="22,6 12,13 2,6"></polyline>
+                                    </svg>
+                                </div>
                             </div>
                         </div>
 
-                        <div style={{ marginBottom: '20px' }}>
+                        <div style={{ marginBottom: '24px' }}>
                             <div style={{
                                 display: 'flex',
                                 justifyContent: 'space-between',
@@ -223,7 +352,8 @@ export default function Login() {
                                     style={{
                                         fontSize: '14px',
                                         fontWeight: '500',
-                                        color: '#374151'
+                                        color: 'var(--text-primary)',
+                                        transition: 'color 0.3s'
                                     }}
                                 >
                                     Senha
@@ -232,8 +362,10 @@ export default function Login() {
                                     href="#"
                                     style={{
                                         fontSize: '13px',
-                                        color: '#3b82f6',
-                                        textDecoration: 'none'
+                                        color: 'var(--primary-color)',
+                                        textDecoration: 'none',
+                                        transition: 'color 0.2s',
+                                        fontWeight: '500'
                                     }}
                                 >
                                     Esqueceu?
@@ -248,32 +380,38 @@ export default function Login() {
                                     required
                                     style={{
                                         width: '100%',
-                                        padding: '12px 12px 12px 40px',
-                                        border: '1px solid #d1d5db',
-                                        borderRadius: '8px',
+                                        padding: '14px 14px 14px 46px',
+                                        border: '1px solid var(--border-color)',
+                                        borderRadius: '12px',
                                         fontSize: '15px',
-                                        outline: 'none'
+                                        outline: 'none',
+                                        backgroundColor: 'var(--background-main)',
+                                        color: 'var(--text-primary)',
+                                        transition: 'all 0.3s',
+                                        boxShadow: 'var(--shadow-sm)'
                                     }}
                                     placeholder="••••••••"
                                     value={password}
                                     onChange={(e) => setPassword(e.target.value)}
                                 />
-                                <svg
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    viewBox="0 0 20 20"
-                                    fill="currentColor"
-                                    style={{
-                                        position: 'absolute',
-                                        left: '12px',
-                                        top: '50%',
-                                        transform: 'translateY(-50%)',
-                                        width: '20px',
-                                        height: '20px',
-                                        color: '#9ca3af'
-                                    }}
-                                >
-                                    <path fillRule="evenodd" d="M10 1a4.5 4.5 0 00-4.5 4.5V9H5a2 2 0 00-2 2v6a2 2 0 002 2h10a2 2 0 002-2v-6a2 2 0 00-2-2h-.5V5.5A4.5 4.5 0 0010 1zm3 8V5.5a3 3 0 10-6 0V9h6z" clipRule="evenodd" />
-                                </svg>
+                                <div style={{
+                                    position: 'absolute',
+                                    left: '14px',
+                                    top: '50%',
+                                    transform: 'translateY(-50%)',
+                                    width: '22px',
+                                    height: '22px',
+                                    color: 'var(--text-tertiary)',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    transition: 'color 0.3s'
+                                }}>
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                                        <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                                    </svg>
+                                </div>
                             </div>
                         </div>
 
@@ -282,26 +420,68 @@ export default function Login() {
                             alignItems: 'center',
                             marginBottom: '24px'
                         }}>
-                            <input
-                                id="remember-me"
-                                name="remember-me"
-                                type="checkbox"
-                                style={{
-                                    width: '16px',
-                                    height: '16px',
+                            <div style={{
+                                position: 'relative',
+                                display: 'flex',
+                                alignItems: 'center'
+                            }}>
+                                <input
+                                    id="remember-me"
+                                    name="remember-me"
+                                    type="checkbox"
+                                    style={{
+                                        position: 'absolute',
+                                        opacity: 0,
+                                        width: '0',
+                                        height: '0'
+                                    }}
+                                />
+                                <div style={{
+                                    width: '18px',
+                                    height: '18px',
                                     borderRadius: '4px',
-                                    marginRight: '8px'
-                                }}
-                            />
-                            <label
-                                htmlFor="remember-me"
-                                style={{
-                                    fontSize: '14px',
-                                    color: '#4b5563'
-                                }}
-                            >
-                                Lembrar de mim
-                            </label>
+                                    marginRight: '10px',
+                                    border: '2px solid var(--border-color)',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    transition: 'all 0.2s',
+                                    cursor: 'pointer',
+                                    backgroundColor: 'var(--background-main)'
+                                }} onClick={() => {
+                                    const checkbox = document.getElementById('remember-me') as HTMLInputElement;
+                                    checkbox.checked = !checkbox.checked;
+                                }}>
+                                    <svg
+                                        xmlns="http://www.w3.org/2000/svg"
+                                        width="12"
+                                        height="12"
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="white"
+                                        strokeWidth="3"
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        style={{
+                                            opacity: 0,
+                                            transition: 'opacity 0.2s'
+                                        }}
+                                    >
+                                        <polyline points="20 6 9 17 4 12"></polyline>
+                                    </svg>
+                                </div>
+                                <label
+                                    htmlFor="remember-me"
+                                    style={{
+                                        fontSize: '14px',
+                                        color: 'var(--text-secondary)',
+                                        cursor: 'pointer',
+                                        transition: 'color 0.3s'
+                                    }}
+                                >
+                                    Lembrar de mim
+                                </label>
+                            </div>
                         </div>
 
                         <button
@@ -312,16 +492,18 @@ export default function Login() {
                                 justifyContent: 'center',
                                 alignItems: 'center',
                                 width: '100%',
-                                padding: '12px',
-                                backgroundColor: '#3b82f6',
+                                padding: '14px',
+                                backgroundColor: 'var(--primary-color)',
                                 color: 'white',
                                 border: 'none',
-                                borderRadius: '8px',
+                                borderRadius: '12px',
                                 fontSize: '15px',
-                                fontWeight: '500',
+                                fontWeight: '600',
                                 cursor: loading ? 'not-allowed' : 'pointer',
                                 opacity: loading ? '0.7' : '1',
-                                marginBottom: '12px'
+                                marginBottom: '16px',
+                                transition: 'all 0.2s',
+                                boxShadow: 'var(--shadow-md)'
                             }}
                         >
                             {loading ? (
@@ -360,8 +542,9 @@ export default function Login() {
                     <div style={{
                         marginTop: '24px',
                         textAlign: 'center',
-                        color: '#6b7280',
-                        fontSize: '14px'
+                        color: 'var(--text-tertiary)',
+                        fontSize: '14px',
+                        transition: 'color 0.3s'
                     }}>
                         <p>Acesso restrito para usuários autorizados.</p>
                     </div>

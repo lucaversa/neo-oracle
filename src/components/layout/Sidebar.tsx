@@ -10,6 +10,7 @@ interface SidebarProps {
     onSessionSelect: (sessionId: string) => void;
     onNewSession: () => Promise<string | null>;
     userId?: string;
+    isCreatingSession?: boolean; // Nova propriedade
 }
 
 interface SessionInfo {
@@ -24,11 +25,25 @@ export default function Sidebar({
     currentSessionId,
     onSessionSelect,
     onNewSession,
-    userId
+    userId,
+    isCreatingSession = false
 }: SidebarProps) {
     const [creating, setCreating] = useState(false);
     const [sessionInfos, setSessionInfos] = useState<Map<string, SessionInfo>>(new Map());
     const { isDarkMode } = useTheme();
+
+    // Usar a prop isCreatingSession para controlar o estado
+    useEffect(() => {
+        if (isCreatingSession) {
+            setCreating(true);
+        } else {
+            // Esperar um momento antes de esconder a animação
+            const timer = setTimeout(() => {
+                setCreating(false);
+            }, 500);
+            return () => clearTimeout(timer);
+        }
+    }, [isCreatingSession]);
 
     // Carregar primeira mensagem para cada sessão
     useEffect(() => {
@@ -40,13 +55,15 @@ export default function Sidebar({
 
             for (const sessionId of activeSessions) {
                 try {
-                    console.log('Carregando info para sessão:', sessionId);
+                    // Garantir que o ID da sessão esteja sem espaços extras
+                    const trimmedSessionId = sessionId.trim();
+                    console.log('Carregando info para sessão:', trimmedSessionId);
 
-                    // Buscar mensagens desta sessão
+                    // Buscar mensagens desta sessão considerando possíveis versões com espaço
                     const { data, error } = await supabase
                         .from('n8n_chat_histories')
                         .select('message')
-                        .eq('session_id', sessionId)
+                        .or(`session_id.eq.${trimmedSessionId},session_id.eq. ${trimmedSessionId}`)
                         .order('id');
 
                     if (error) {
@@ -85,17 +102,18 @@ export default function Sidebar({
                         }
                     }
 
-                    newSessionInfos.set(sessionId, {
-                        id: sessionId,
+                    newSessionInfos.set(trimmedSessionId, {
+                        id: trimmedSessionId,
                         firstMessage
                     });
 
                 } catch (err) {
                     console.error('Erro ao processar sessão:', err);
                     // Usar nome padrão em caso de erro
-                    newSessionInfos.set(sessionId, {
-                        id: sessionId,
-                        firstMessage: `Conversa ${sessionId.substring(0, 5)}...`
+                    const trimmedId = sessionId.trim();
+                    newSessionInfos.set(trimmedId, {
+                        id: trimmedId,
+                        firstMessage: `Conversa ${trimmedId.substring(0, 5)}...`
                     });
                 }
             }
@@ -107,19 +125,23 @@ export default function Sidebar({
     }, [activeSessions]);
 
     const handleNewSession = async () => {
+        if (creating || isCreatingSession) return; // Evitar múltiplos cliques
+
         setCreating(true);
         try {
+            console.log("Iniciando criação de nova sessão...");
             await onNewSession();
-        } finally {
-            setCreating(false);
+        } catch (error) {
+            console.error("Erro ao criar nova sessão:", error);
         }
     };
 
     // Função para obter nome amigável para a sessão
     const getSessionName = (sessionId: string, index: number): string => {
         // Se temos informações sobre a sessão, usar a primeira mensagem
-        if (sessionInfos.has(sessionId)) {
-            return sessionInfos.get(sessionId)!.firstMessage;
+        const trimmedId = sessionId.trim();
+        if (sessionInfos.has(trimmedId)) {
+            return sessionInfos.get(trimmedId)!.firstMessage;
         }
 
         // Fallback para índice
@@ -130,8 +152,8 @@ export default function Sidebar({
     const hasDuplicateSessions = (): boolean => {
         if (activeSessions.length <= 1) return false;
 
-        const firstId = activeSessions[0];
-        return activeSessions.every(id => id === firstId);
+        const uniqueIds = new Set(activeSessions.map(id => id.trim()));
+        return uniqueIds.size !== activeSessions.length;
     };
 
     const sidebarStyle: React.CSSProperties = {
@@ -155,10 +177,10 @@ export default function Sidebar({
         sidebarStyle.transform = 'translateX(0)';
     }
 
-    // Verificar se todas as sessões têm o mesmo ID
-    const duplicateSessions = hasDuplicateSessions();
+    // Remover sessões duplicadas (com espaços extras)
+    const uniqueSessions = Array.from(new Set(activeSessions.map(id => id.trim())));
 
-    console.log('Sessões exibidas na sidebar:', activeSessions);
+    console.log('Sessões únicas exibidas na sidebar:', uniqueSessions);
 
     return (
         <div style={sidebarStyle}>
@@ -197,7 +219,7 @@ export default function Sidebar({
             <div style={{ padding: '16px' }}>
                 <button
                     onClick={handleNewSession}
-                    disabled={creating}
+                    disabled={creating || isCreatingSession}
                     style={{
                         width: '100%',
                         display: 'flex',
@@ -209,13 +231,13 @@ export default function Sidebar({
                         border: 'none',
                         borderRadius: '8px',
                         fontWeight: '500',
-                        cursor: creating ? 'not-allowed' : 'pointer',
-                        opacity: creating ? 0.7 : 1,
+                        cursor: (creating || isCreatingSession) ? 'not-allowed' : 'pointer',
+                        opacity: (creating || isCreatingSession) ? 0.7 : 1,
                         transition: 'background-color 0.2s',
                         boxShadow: 'var(--shadow-sm)'
                     }}
                 >
-                    {creating ? (
+                    {(creating || isCreatingSession) ? (
                         <span style={{ display: 'flex', alignItems: 'center' }}>
                             <svg
                                 style={{
@@ -256,7 +278,7 @@ export default function Sidebar({
             </div>
 
             {/* Aviso caso todas as sessões tenham o mesmo ID */}
-            {duplicateSessions && (
+            {hasDuplicateSessions() && (
                 <div style={{
                     padding: '12px 16px',
                     margin: '0 12px 12px 12px',
@@ -266,7 +288,7 @@ export default function Sidebar({
                     borderRadius: '4px',
                     fontSize: '13px'
                 }}>
-                    <p>Todas as conversas têm o mesmo ID de sessão. Crie uma nova conversa.</p>
+                    <p>Foram encontradas conversas duplicadas. Isso será corrigido após atualização.</p>
                 </div>
             )}
 
@@ -275,7 +297,7 @@ export default function Sidebar({
                 overflowY: 'auto',
                 padding: '8px 12px'
             }}>
-                {activeSessions.length === 0 ? (
+                {uniqueSessions.length === 0 ? (
                     <div style={{
                         textAlign: 'center',
                         color: 'var(--text-tertiary)',
@@ -312,80 +334,36 @@ export default function Sidebar({
                         flexDirection: 'column',
                         gap: '6px'
                     }}>
-                        {duplicateSessions ? (
-                            // Se todas as sessões têm o mesmo ID, mostrar apenas uma
-                            <li key={activeSessions[0]}>
-                                <button
-                                    onClick={() => onSessionSelect(activeSessions[0])}
-                                    style={{
-                                        width: '100%',
-                                        textAlign: 'left',
-                                        padding: '10px 12px',
-                                        borderRadius: '8px',
-                                        backgroundColor: 'var(--background-subtle)',
-                                        color: 'var(--text-primary)',
-                                        border: 'none',
-                                        cursor: 'pointer',
-                                        fontWeight: '500',
-                                        overflow: 'hidden',
-                                        textOverflow: 'ellipsis',
-                                        whiteSpace: 'nowrap',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '8px'
-                                    }}
-                                >
-                                    <svg
-                                        xmlns="http://www.w3.org/2000/svg"
-                                        width="16"
-                                        height="16"
-                                        viewBox="0 0 24 24"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        strokeWidth="2"
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                    >
-                                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-                                    </svg>
-                                    <span style={{
-                                        fontWeight: '500',
-                                        overflow: 'hidden',
-                                        textOverflow: 'ellipsis'
-                                    }}>
-                                        {sessionInfos.has(activeSessions[0])
-                                            ? sessionInfos.get(activeSessions[0])!.firstMessage
-                                            : 'Conversa'}
-                                    </span>
-                                </button>
-                            </li>
-                        ) : (
-                            // Caso contrário, mostrar todas as sessões
-                            activeSessions.map((session, index) => (
-                                <li key={session}>
+                        {uniqueSessions.map((session, index) => {
+                            const trimmedSession = session.trim();
+                            const isActive = currentSessionId.trim() === trimmedSession;
+
+                            return (
+                                <li key={trimmedSession}>
                                     <button
-                                        onClick={() => onSessionSelect(session)}
+                                        onClick={() => !creating && onSessionSelect(trimmedSession)}
                                         style={{
                                             width: '100%',
                                             textAlign: 'left',
                                             padding: '10px 12px',
                                             borderRadius: '8px',
-                                            backgroundColor: currentSessionId === session
+                                            backgroundColor: isActive
                                                 ? 'var(--background-subtle)'
                                                 : 'transparent',
-                                            color: currentSessionId === session
+                                            color: isActive
                                                 ? 'var(--text-primary)'
                                                 : 'var(--text-secondary)',
                                             border: 'none',
-                                            cursor: 'pointer',
+                                            cursor: creating ? 'not-allowed' : 'pointer',
                                             transition: 'background-color 0.2s',
-                                            fontWeight: currentSessionId === session ? '500' : 'normal',
+                                            fontWeight: isActive ? '500' : 'normal',
                                             overflow: 'hidden',
                                             textOverflow: 'ellipsis',
                                             whiteSpace: 'nowrap',
                                             display: 'flex',
                                             alignItems: 'center',
-                                            gap: '8px'
+                                            gap: '8px',
+                                            opacity: creating ? 0.6 : 1
                                         }}
                                     >
                                         <svg
@@ -406,12 +384,12 @@ export default function Sidebar({
                                             overflow: 'hidden',
                                             textOverflow: 'ellipsis'
                                         }}>
-                                            {getSessionName(session, index)}
+                                            {getSessionName(trimmedSession, index)}
                                         </span>
                                     </button>
                                 </li>
-                            ))
-                        )}
+                            );
+                        })}
                     </ul>
                 )}
             </div>

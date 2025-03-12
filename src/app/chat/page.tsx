@@ -9,6 +9,7 @@ import ChatBubble from '@/components/chat/ChatBubble';
 import ChatInput from '@/components/chat/ChatInput';
 import Header from '@/components/layout/Header';
 import Sidebar from '@/components/layout/Sidebar';
+import { v4 as uuidv4 } from 'uuid';
 
 export default function ChatPage() {
     const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -16,6 +17,10 @@ export default function ChatPage() {
     const { isDarkMode } = useTheme();
     const router = useRouter();
     const chatContainerRef = useRef<HTMLDivElement>(null);
+    const lastMessageCountRef = useRef<number>(0);
+    const creatingSessionRef = useRef<boolean>(false);
+    const [isCreatingNewSession, setIsCreatingNewSession] = useState(false);
+    const [newSessionId, setNewSessionId] = useState<string | null>(null);
 
     // Proteger a rota - redirecionar se não estiver autenticado
     useEffect(() => {
@@ -38,11 +43,35 @@ export default function ChatPage() {
         sessionLimitReached
     } = useChat(user?.id);
 
+    // Efeito para garantir que o ID da nova sessão seja aplicado corretamente
+    useEffect(() => {
+        if (newSessionId && sessionId !== newSessionId) {
+            // Se temos um novo ID de sessão mas ele ainda não foi aplicado no hook
+            console.log(`Atualizando ID da sessão: ${sessionId} -> ${newSessionId}`);
+            changeSession(newSessionId);
+        } else if (newSessionId && sessionId === newSessionId && isCreatingNewSession) {
+            // Se a sessão foi atualizada, finalizamos a criação
+            console.log('Nova sessão aplicada com sucesso:', newSessionId);
+            setIsCreatingNewSession(false);
+            setNewSessionId(null);
+        }
+    }, [newSessionId, sessionId, isCreatingNewSession, changeSession]);
+
     // Rolar para o final da conversa quando novas mensagens chegarem
     useEffect(() => {
         if (chatContainerRef.current && messages.length > 0) {
-            const container = chatContainerRef.current;
-            container.scrollTop = container.scrollHeight;
+            // Verificar se há novas mensagens comparando com a contagem anterior
+            if (messages.length > lastMessageCountRef.current) {
+                console.log(`Novas mensagens detectadas: ${messages.length} (anterior: ${lastMessageCountRef.current})`);
+                const container = chatContainerRef.current;
+                // Usar setTimeout para garantir que o DOM foi atualizado antes de rolar
+                setTimeout(() => {
+                    container.scrollTop = container.scrollHeight;
+                    console.log('Rolagem aplicada');
+                }, 100);
+            }
+            // Atualizar a contagem para comparação futura
+            lastMessageCountRef.current = messages.length;
         }
     }, [messages]);
 
@@ -68,26 +97,79 @@ export default function ChatPage() {
         await logout();
     };
 
+    // Função melhorada para criar nova sessão com transição suave
     const handleNewSession = async () => {
-        return await createNewSession();
+        // Evitar duplicação
+        if (creatingSessionRef.current || isCreatingNewSession) return null;
+
+        try {
+            // Iniciar estado de "criando nova sessão"
+            setIsCreatingNewSession(true);
+            creatingSessionRef.current = true;
+
+            console.log(">> Iniciando criação de nova sessão na página de chat...");
+
+            // Gerar um novo UUID para a sessão
+            const generatedSessionId = uuidv4();
+            console.log(">> Novo UUID gerado:", generatedSessionId);
+
+            // Armazenar o novo ID
+            setNewSessionId(generatedSessionId);
+
+            // Chamar a função do hook com o ID específico
+            const result = await createNewSession(generatedSessionId);
+
+            console.log(">> Resultado da criação da nova sessão:", result);
+
+            // Garantir que o novo ID é usado
+            if (result) {
+                // Forçamos uma atualização imediata da interface
+                changeSession(generatedSessionId);
+
+                // Rolar para o topo para mostrar o chat vazio
+                if (chatContainerRef.current) {
+                    chatContainerRef.current.scrollTop = 0;
+                }
+
+                console.log(">> Nova conversa iniciada com ID:", generatedSessionId);
+                return generatedSessionId;
+            }
+
+            return result;
+        } catch (error) {
+            console.error(">> Erro ao criar nova sessão:", error);
+            setIsCreatingNewSession(false);
+            setNewSessionId(null);
+            return null;
+        } finally {
+            setTimeout(() => {
+                creatingSessionRef.current = false;
+            }, 500);
+        }
     };
 
     const handleSendMessage = async (content: string) => {
+        // Se estamos criando uma nova sessão, não permitir envio
+        if (isCreatingNewSession) {
+            console.log("Aguardando criação da nova sessão para enviar mensagem...");
+            return;
+        }
+
         if (sessionLimitReached) {
             // Criar automaticamente uma nova sessão se o limite for atingido
-            const newSessionId = await createNewSession();
+            const newSessionId = await handleNewSession();
             if (newSessionId) {
                 // Aguardar um momento para a mudança de estado ocorrer
                 setTimeout(() => {
                     sendMessage(content);
-                }, 100);
+                }, 300);
             }
         } else {
             await sendMessage(content);
         }
     };
 
-    if (loading && messages.length === 0) {
+    if (loading && messages.length === 0 && !isCreatingNewSession) {
         return (
             <div className="flex items-center justify-center h-screen bg-background-main">
                 <div className="w-12 h-12 border-4 border-border-color border-t-primary-color rounded-full animate-spin"></div>
@@ -113,6 +195,7 @@ export default function ChatPage() {
                 onSessionSelect={changeSession}
                 onNewSession={handleNewSession}
                 userId={user?.id}
+                isCreatingSession={isCreatingNewSession}
             />
 
             {/* Main content */}
@@ -129,6 +212,38 @@ export default function ChatPage() {
                     userName={userName}
                 />
 
+                {/* Overlay durante a criação de nova sessão */}
+                {isCreatingNewSession && (
+                    <div style={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        backgroundColor: 'rgba(0, 0, 0, 0.1)',
+                        zIndex: 100,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        backdropFilter: 'blur(2px)',
+                        transition: 'all 0.3s ease'
+                    }}>
+                        <div style={{
+                            backgroundColor: 'var(--background-elevated)',
+                            borderRadius: '12px',
+                            padding: '20px',
+                            boxShadow: 'var(--shadow-lg)',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            gap: '16px'
+                        }}>
+                            <div className="w-12 h-12 border-4 border-border-color border-t-primary-color rounded-full animate-spin"></div>
+                            <p style={{ color: 'var(--text-primary)' }}>Criando nova conversa...</p>
+                        </div>
+                    </div>
+                )}
+
                 {/* Chat container */}
                 <div
                     ref={chatContainerRef}
@@ -137,7 +252,8 @@ export default function ChatPage() {
                         overflowY: 'auto',
                         padding: '16px',
                         backgroundColor: 'var(--background-main)',
-                        transition: 'background-color 0.3s'
+                        transition: 'background-color 0.3s',
+                        position: 'relative'
                     }}
                 >
                     <div style={{
@@ -221,121 +337,79 @@ export default function ChatPage() {
                             </div>
                         ) : (
                             <>
+                                {/* Renderizar todas as mensagens */}
                                 {messages.map((message, index) => (
                                     <ChatBubble
-                                        key={`${sessionId}-${index}`}
+                                        key={`${sessionId}-${index}-${message.type}-${message.content.substring(0, 10)}`}
                                         message={message}
                                         userName={userName}
                                     />
                                 ))}
-
-                                {/* Indicador de "digitando" quando estiver processando */}
-                                {isProcessing && (
-                                    <div style={{
-                                        display: 'flex',
-                                        alignItems: 'flex-start',
-                                        marginBottom: '24px',
-                                        gap: '12px'
-                                    }}>
-                                        <div style={{
-                                            width: '40px',
-                                            height: '40px',
-                                            borderRadius: '50%',
-                                            backgroundColor: '#4f46e5',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            justifyContent: 'center',
-                                            color: 'white',
-                                            fontSize: '16px',
-                                            fontWeight: 'bold',
-                                            boxShadow: 'var(--shadow-md)',
-                                            flexShrink: 0
-                                        }}>
-                                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z" />
-                                                <path d="M12 8v4l3 3" />
-                                                <path d="M12 16h.01" />
-                                            </svg>
-                                        </div>
-                                        <div style={{
-                                            maxWidth: '80%',
-                                            borderRadius: '18px',
-                                            padding: '12px 16px',
-                                            backgroundColor: isDarkMode ? 'var(--background-subtle)' : 'var(--background-subtle)',
-                                            color: 'var(--text-primary)',
-                                            boxShadow: 'var(--shadow-sm)',
-                                            position: 'relative',
-                                            borderBottomLeftRadius: '4px'
-                                        }}>
-                                            <div style={{
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                gap: '4px'
-                                            }}>
-                                                <span style={{
-                                                    height: '8px',
-                                                    width: '8px',
-                                                    borderRadius: '50%',
-                                                    backgroundColor: '#4f46e5',
-                                                    animation: 'pulse 1.5s infinite'
-                                                }}></span>
-                                                <span style={{
-                                                    height: '8px',
-                                                    width: '8px',
-                                                    borderRadius: '50%',
-                                                    backgroundColor: '#4f46e5',
-                                                    animation: 'pulse 1.5s infinite 0.3s'
-                                                }}></span>
-                                                <span style={{
-                                                    height: '8px',
-                                                    width: '8px',
-                                                    borderRadius: '50%',
-                                                    backgroundColor: '#4f46e5',
-                                                    animation: 'pulse 1.5s infinite 0.6s'
-                                                }}></span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
-
-                                {sessionLimitReached && !error && (
-                                    <div style={{
-                                        backgroundColor: 'rgba(245, 158, 11, 0.1)',
-                                        borderLeft: '4px solid var(--warning-color)',
-                                        color: 'var(--warning-color)',
-                                        padding: '16px',
-                                        marginTop: '16px',
-                                        marginBottom: '16px',
-                                        borderRadius: '4px'
-                                    }}>
-                                        <p>Você atingiu o limite de 10 mensagens para esta conversa.</p>
-                                        <button
-                                            onClick={handleNewSession}
-                                            style={{
-                                                marginTop: '8px',
-                                                padding: '6px 12px',
-                                                backgroundColor: 'var(--primary-color)',
-                                                color: 'white',
-                                                borderRadius: '4px',
-                                                border: 'none',
-                                                cursor: 'pointer'
-                                            }}
-                                        >
-                                            Iniciar Nova Conversa
-                                        </button>
-                                    </div>
-                                )}
                             </>
                         )}
                     </div>
                 </div>
 
+                {/* Indicador "O Oráculo está pensando..." */}
+                {isProcessing && !isCreatingNewSession && (
+                    <div style={{
+                        position: 'relative',
+                        marginBottom: '20px', // Espaço acima do campo de entrada
+                        display: 'flex',
+                        justifyContent: 'center',
+                        zIndex: 10,
+                    }}>
+                        <div style={{
+                            backgroundColor: 'var(--background-subtle)',
+                            borderRadius: '99px',
+                            padding: '8px 16px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            boxShadow: 'var(--shadow-md)',
+                            color: 'var(--text-secondary)',
+                            animation: 'fadeIn 0.3s ease-out'
+                        }}>
+                            <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                                <span style={{
+                                    height: '8px',
+                                    width: '8px',
+                                    borderRadius: '50%',
+                                    backgroundColor: '#4f46e5',
+                                    animation: 'pulse 1.5s infinite'
+                                }}></span>
+                                <span style={{
+                                    height: '8px',
+                                    width: '8px',
+                                    borderRadius: '50%',
+                                    backgroundColor: '#4f46e5',
+                                    animation: 'pulse 1.5s infinite 0.3s'
+                                }}></span>
+                                <span style={{
+                                    height: '8px',
+                                    width: '8px',
+                                    borderRadius: '50%',
+                                    backgroundColor: '#4f46e5',
+                                    animation: 'pulse 1.5s infinite 0.6s'
+                                }}></span>
+                            </div>
+                            O Oráculo está pensando...
+                        </div>
+                    </div>
+                )}
+
                 {/* Input area */}
                 <ChatInput
                     onSendMessage={handleSendMessage}
-                    disabled={loading || sessionLimitReached}
+                    disabled={loading || sessionLimitReached || isCreatingNewSession}
                     isThinking={isProcessing}
-                    placeholder={sessionLimitReached ? "Limite de mensagens atingido. Crie uma nova conversa." : "Digite sua mensagem..."}
+                    placeholder={
+                        isCreatingNewSession
+                            ? "Criando nova conversa..."
+                            : sessionLimitReached
+                                ? "Limite de mensagens atingido. Crie uma nova conversa."
+                                : "Digite sua mensagem..."
+                    }
                 />
             </div>
         </div>

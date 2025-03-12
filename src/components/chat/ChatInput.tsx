@@ -12,7 +12,7 @@ export default function ChatInput({
     onSendMessage,
     disabled = false,
     isThinking = false,
-    placeholder = "Digite sua mensagem..."
+    placeholder = "O que você quer saber?"
 }: ChatInputProps) {
     const [message, setMessage] = useState('');
     const [isSending, setIsSending] = useState(false);
@@ -50,56 +50,6 @@ export default function ChatInput({
             transition: 'background-color 0.3s',
             position: 'relative'
         }}>
-            {/* Indicador de "pensando" */}
-            {isThinking && (
-                <div style={{
-                    position: 'absolute',
-                    top: '-40px',
-                    left: '50%',
-                    transform: 'translateX(-50%)',
-                    backgroundColor: 'var(--background-subtle)',
-                    color: 'var(--text-secondary)',
-                    padding: '8px 16px',
-                    borderRadius: '99px',
-                    fontSize: '14px',
-                    boxShadow: 'var(--shadow-md)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    zIndex: 10,
-                    animation: 'fadeInUp 0.3s ease-out'
-                }}>
-                    <div style={{
-                        display: 'flex',
-                        gap: '4px',
-                        alignItems: 'center'
-                    }}>
-                        <span style={{
-                            height: '8px',
-                            width: '8px',
-                            borderRadius: '50%',
-                            backgroundColor: '#4f46e5',
-                            animation: 'pulse 1.5s infinite'
-                        }}></span>
-                        <span style={{
-                            height: '8px',
-                            width: '8px',
-                            borderRadius: '50%',
-                            backgroundColor: '#4f46e5',
-                            animation: 'pulse 1.5s infinite 0.3s'
-                        }}></span>
-                        <span style={{
-                            height: '8px',
-                            width: '8px',
-                            borderRadius: '50%',
-                            backgroundColor: '#4f46e5',
-                            animation: 'pulse 1.5s infinite 0.6s'
-                        }}></span>
-                    </div>
-                    O Oráculo está pensando...
-                </div>
-            )}
-
             <form
                 onSubmit={handleSubmit}
                 style={{

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useTheme } from '@/context/ThemeContext';
 
 interface HeaderProps {
@@ -9,7 +9,24 @@ interface HeaderProps {
 
 export default function Header({ toggleSidebar, onLogout, userName }: HeaderProps) {
     const [userMenuOpen, setUserMenuOpen] = useState(false);
+    const [isMobile, setIsMobile] = useState(false);
     const { isDarkMode, toggleDarkMode } = useTheme();
+
+    // Detectar se é dispositivo móvel
+    useEffect(() => {
+        const checkIfMobile = () => {
+            setIsMobile(window.innerWidth < 768);
+        };
+
+        // Verificar inicialmente
+        checkIfMobile();
+
+        // Configurar listener para redimensionamento
+        window.addEventListener('resize', checkIfMobile);
+
+        // Cleanup
+        return () => window.removeEventListener('resize', checkIfMobile);
+    }, []);
 
     const toggleUserMenu = () => {
         setUserMenuOpen(!userMenuOpen);
@@ -30,13 +47,11 @@ export default function Header({ toggleSidebar, onLogout, userName }: HeaderProp
                 padding: '12px 16px',
                 maxWidth: '1400px',
                 margin: '0 auto',
-                width: '100%'
+                width: '100%',
+                position: 'relative' // Para posicionamento absoluto do título
             }}>
-                <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '16px'
-                }}>
+                {/* Menu (apenas em mobile) */}
+                {isMobile && (
                     <button
                         onClick={toggleSidebar}
                         style={{
@@ -48,7 +63,8 @@ export default function Header({ toggleSidebar, onLogout, userName }: HeaderProp
                             color: 'var(--text-secondary)',
                             display: 'flex',
                             alignItems: 'center',
-                            justifyContent: 'center'
+                            justifyContent: 'center',
+                            zIndex: 10 // Acima do título centralizado
                         }}
                         aria-label="Abrir menu lateral"
                     >
@@ -56,29 +72,36 @@ export default function Header({ toggleSidebar, onLogout, userName }: HeaderProp
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
                         </svg>
                     </button>
+                )}
 
-                    {/* Espaço para Logo */}
-                    <div style={{
-                        height: '40px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        padding: '0 8px'
+                {/* Título centralizado */}
+                {!isMobile && (<div style={{
+                    position: 'absolute',
+                    left: '50%',
+                    transform: 'translateX(-50%)',
+                    textAlign: 'center',
+                    width: 'auto',
+                    zIndex: 5
+                }}>
+                    <span style={{
+                        fontSize: '20px',
+                        fontWeight: 'bold',
+                        color: '#4f46e5', // Cor fixa para o logo, não muda com o tema
                     }}>
-                        <span style={{
-                            fontSize: '20px',
-                            fontWeight: 'bold',
-                            color: '#4f46e5', // Cor fixa para o logo, não muda com o tema
-                            display: 'inline-block'
-                        }}>
-                            Oráculo Empresarial
-                        </span>
-                    </div>
+                        Oráculo Empresarial
+                    </span>
                 </div>
+                )}
 
+                {/* Espaço vazio à esquerda em desktop para equilibrar o layout */}
+                {!isMobile && <div style={{ width: '24px' }}></div>}
+
+                {/* Controles direita */}
                 <div style={{
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '8px'
+                    gap: '8px',
+                    zIndex: 10 // Acima do título centralizado
                 }}>
                     {/* Botão de tema */}
                     <button

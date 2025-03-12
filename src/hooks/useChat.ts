@@ -1,10 +1,12 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { v4 as uuidv4 } from 'uuid';
 import { ChatMessage } from '@/types/chat';
 
 // Constante para o limite de mensagens humanas por chat
 const MAX_HUMAN_MESSAGES_PER_SESSION = 10;
+// Intervalo de polling em milissegundos
+const POLLING_INTERVAL = 2000;
 
 interface UseChatReturn {
     messages: ChatMessage[];
@@ -13,7 +15,7 @@ interface UseChatReturn {
     error: string | null;
     sendMessage: (content: string) => Promise<void>;
     changeSession: (newSessionId: string) => void;
-    createNewSession: () => Promise<string | null>;
+    createNewSession: (specificId?: string) => Promise<string | null>;
     activeSessions: string[];
     isProcessing: boolean;
     sessionLimitReached: boolean;
@@ -28,6 +30,16 @@ export function useChat(userId?: string): UseChatReturn {
     const [isProcessing, setIsProcessing] = useState<boolean>(false);
     const [sessionLimitReached, setSessionLimitReached] = useState<boolean>(false);
     const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+    const lastMessageCountRef = useRef<number>(0);
+    const messagesRef = useRef<ChatMessage[]>([]);
+    const pendingMessageRef = useRef<ChatMessage | null>(null);
+    const isCreatingSessionRef = useRef<boolean>(false);
+
+    // Manter uma referência atualizada às mensagens para uso no polling
+    useEffect(() => {
+        messagesRef.current = messages;
+        lastMessageCountRef.current = messages.length;
+    }, [messages]);
 
     // Função para carregar sessões únicas do Supabase
     const loadActiveSessions = async () => {
@@ -44,14 +56,20 @@ export function useChat(userId?: string): UseChatReturn {
                 console.log('Nenhuma sessão encontrada');
                 return [];
             }
-            const uniqueSessionIds = new Set<string>();
+
+            // Map para armazenar IDs de sessão sem espaços
+            const uniqueSessionIds = new Map<string, string>();
+
             data.forEach(item => {
                 if (item && item.session_id) {
-                    uniqueSessionIds.add(item.session_id);
+                    const trimmedId = item.session_id.trim();
+                    // Usar o ID limpo como chave para evitar duplicidades
+                    uniqueSessionIds.set(trimmedId, trimmedId);
                 }
             });
-            const sessions = Array.from(uniqueSessionIds);
-            console.log('Sessões únicas encontradas:', sessions);  // LOG AQUI
+
+            const sessions = Array.from(uniqueSessionIds.values());
+            console.log('Sessões únicas encontradas:', sessions);
             return sessions;
         } catch (err) {
             console.error('Erro ao carregar sessões:', err);
@@ -63,14 +81,17 @@ export function useChat(userId?: string): UseChatReturn {
     const countHumanMessages = async (sessionId: string): Promise<number> => {
         if (!sessionId) return 0;
 
-        try {
-            console.log('Contando mensagens humanas para sessão:', sessionId);
+        // Garantir que o sessionId esteja limpo
+        const trimmedSessionId = sessionId.trim();
 
-            // Buscar mensagens desta sessão primeiro
+        try {
+            console.log('Contando mensagens humanas para sessão:', trimmedSessionId);
+
+            // Utilizar LIKE para buscar tanto com quanto sem espaços
             const { data, error } = await supabase
                 .from('n8n_chat_histories')
                 .select('message')
-                .eq('session_id', sessionId);
+                .or(`session_id.eq.${trimmedSessionId},session_id.eq. ${trimmedSessionId}`);
 
             if (error) {
                 console.error('Erro na consulta de mensagens:', error);
@@ -104,18 +125,43 @@ export function useChat(userId?: string): UseChatReturn {
         }
     };
 
-    // Carregar mensagens para uma sessão específica
-    const loadMessagesForSession = async (sessionId: string) => {
+    // Verificar se a mensagem do usuário tem uma resposta correspondente
+    const hasResponseForUserMessage = (messages: any[]): boolean => {
+        // Verificar se há um número par de mensagens (cada humana tem uma resposta AI)
+        if (messages.length % 2 === 0) return true;
+
+        // Se tivermos uma mensagem pendente no ref, precisamos verificar se ela foi respondida
+        if (pendingMessageRef.current) {
+            // Conta as mensagens do tipo humano e ai
+            const humanMessages = messages.filter(m => m.message.type === 'human');
+            const aiMessages = messages.filter(m => m.message.type === 'ai');
+
+            // Se temos o mesmo número de mensagens humanas e AI, todas foram respondidas
+            return humanMessages.length === aiMessages.length;
+        }
+
+        return false;
+    };
+
+    // Carregar mensagens para uma sessão específica (memoizado)
+    const loadMessagesForSession = useCallback(async (sessionId: string) => {
         if (!sessionId) return;
 
-        try {
-            console.log('Carregando mensagens para sessão:', sessionId);
+        // Se estamos criando uma nova sessão, não carregar mensagens
+        if (isCreatingSessionRef.current) {
+            console.log('Pulando carregamento durante criação de nova sessão');
+            return;
+        }
 
-            // Buscar mensagens desta sessão
+        // Garantir que o sessionId esteja limpo
+        const trimmedSessionId = sessionId.trim();
+
+        try {
+            // Buscar mensagens usando OR para encontrar tanto com quanto sem espaços
             const { data, error } = await supabase
                 .from('n8n_chat_histories')
                 .select('*')
-                .eq('session_id', sessionId)
+                .or(`session_id.eq.${trimmedSessionId},session_id.eq. ${trimmedSessionId}`)
                 .order('id');
 
             if (error) {
@@ -123,14 +169,10 @@ export function useChat(userId?: string): UseChatReturn {
                 return;
             }
 
-            if (!data || !Array.isArray(data) || data.length === 0) {
-                console.log('Nenhuma mensagem encontrada para a sessão');
-                setMessages([]);
-                setIsProcessing(false);
+            if (!data || !Array.isArray(data)) {
+                console.log('Nenhum dado retornado');
                 return;
             }
-
-            console.log(`Encontradas ${data.length} mensagens para a sessão`);
 
             // Filtrar apenas mensagens com estrutura válida
             const validMessages = data.filter(entry => {
@@ -145,52 +187,69 @@ export function useChat(userId?: string): UseChatReturn {
                 }
             });
 
-            console.log(`${validMessages.length} mensagens têm estrutura válida`);
-
-            // Extrair as mensagens para a UI
-            const sessionMessages = validMessages.map(entry => entry.message);
-            setMessages(sessionMessages);
-
-            // Verificar estado "pensando"
-            const humanMessages = validMessages.filter(entry => entry.message.type === 'human');
-            const aiMessages = validMessages.filter(entry => entry.message.type === 'ai');
-
-            // Verificar última interação
-            if (humanMessages.length > 0 && aiMessages.length > 0) {
-                const lastHumanIndex = humanMessages.length - 1;
-                const lastAiIndex = aiMessages.length - 1;
-
-                const lastHumanId = humanMessages[lastHumanIndex].id;
-                const lastAiId = aiMessages[lastAiIndex].id;
-
-                // Se o ID da última mensagem humana for maior que o ID da última mensagem AI,
-                // significa que estamos esperando uma resposta
-                const isWaitingForResponse = lastHumanId > lastAiId;
-                setIsProcessing(isWaitingForResponse);
-
-                console.log('Aguardando resposta do oráculo:', isWaitingForResponse);
-            } else if (humanMessages.length > aiMessages.length) {
-                // Se há mais mensagens humanas que AI, estamos esperando uma resposta
-                setIsProcessing(true);
-                console.log('Mais mensagens humanas que AI, aguardando resposta');
-            } else {
+            // Se não houver mensagens válidas
+            if (validMessages.length === 0) {
+                console.log('Nenhuma mensagem válida encontrada para a sessão');
+                // Não limpar mensagens se for uma nova sessão (sem mensagens)
+                if (!isCreatingSessionRef.current) {
+                    setMessages([]);
+                }
                 setIsProcessing(false);
-                console.log('Não está aguardando resposta');
+                return;
             }
 
-            // Verificar limite de mensagens
-            const humanCount = humanMessages.length;
-            setSessionLimitReached(humanCount >= MAX_HUMAN_MESSAGES_PER_SESSION);
+            // Extrair as mensagens para a UI
+            const sessionMessages = validMessages.map(entry => entry.message as ChatMessage);
 
-            if (humanCount >= MAX_HUMAN_MESSAGES_PER_SESSION) {
-                console.log('Limite de mensagens atingido para esta sessão');
+            // Verificar se temos novas mensagens
+            if (sessionMessages.length !== lastMessageCountRef.current ||
+                JSON.stringify(sessionMessages) !== JSON.stringify(messagesRef.current)) {
+                console.log(`Atualizando ${sessionMessages.length} mensagens (antes: ${lastMessageCountRef.current})`);
+
+                // Se tivermos uma mensagem pendente e ela já estiver no banco, podemos remover a pendente
+                if (pendingMessageRef.current) {
+                    // Verificar se a mensagem pendente já está incluída no resultado do banco
+                    const pendingContent = pendingMessageRef.current.content;
+                    const pendingExists = sessionMessages.some(
+                        msg => msg.type === 'human' && msg.content === pendingContent
+                    );
+
+                    if (pendingExists) {
+                        console.log('Mensagem pendente encontrada no banco, removendo referência local');
+                        pendingMessageRef.current = null;
+                    }
+                }
+
+                // Atualizar as mensagens na UI
+                setMessages(sessionMessages);
+            }
+
+            // Verificar estado "pensando"
+            // Se houver uma mensagem pendente OU se o número de mensagens humanas > AI, estamos processando
+            const isWaitingForResponse = pendingMessageRef.current !== null || !hasResponseForUserMessage(validMessages);
+
+            if (isWaitingForResponse !== isProcessing) {
+                console.log('Atualizando estado de processamento:', isWaitingForResponse);
+                setIsProcessing(isWaitingForResponse);
+            }
+
+            // Contar mensagens humanas para verificar limite
+            const humanMessages = validMessages.filter(entry => entry.message.type === 'human');
+            const humanCount = humanMessages.length;
+            const limitReached = humanCount >= MAX_HUMAN_MESSAGES_PER_SESSION;
+
+            if (limitReached !== sessionLimitReached) {
+                setSessionLimitReached(limitReached);
+                if (limitReached) {
+                    console.log('Limite de mensagens atingido para esta sessão');
+                }
             }
 
         } catch (err) {
             console.error('Erro ao carregar mensagens:', err);
-            setError('Falha ao carregar mensagens');
+            // Não definir erro aqui, apenas logar, para não interromper o polling
         }
-    };
+    }, [isProcessing, sessionLimitReached]);
 
     // Inicializar o hook
     useEffect(() => {
@@ -206,7 +265,7 @@ export function useChat(userId?: string): UseChatReturn {
                 if (sessions.length > 0) {
                     setActiveSessions(sessions);
                     // Verifica se já temos um sessionId válido, caso contrário usa o primeiro
-                    if (!sessionId || !sessions.includes(sessionId)) {
+                    if (!sessionId || !sessions.includes(sessionId.trim())) {
                         const firstSession = sessions[0];
                         console.log('Usando sessão existente:', firstSession);
                         setSessionId(firstSession);
@@ -216,7 +275,7 @@ export function useChat(userId?: string): UseChatReturn {
                     }
                 } else {
                     const newSessionId = uuidv4();
-                    console.log('Criando nova sessão:', newSessionId);
+                    console.log('Criando nova sessão inicial:', newSessionId);
                     setSessionId(newSessionId);
                     setActiveSessions([newSessionId]);
                 }
@@ -236,11 +295,17 @@ export function useChat(userId?: string): UseChatReturn {
                 console.log('Polling interrompido');
             }
         };
-    }, [userId]);
+    }, [userId, sessionId, loadMessagesForSession]);
 
     // Configurar polling quando sessionId mudar
     useEffect(() => {
         if (!sessionId) return;
+
+        // Se estamos criando uma nova sessão, ignorar esta mudança
+        if (isCreatingSessionRef.current) {
+            console.log('Pulando configuração de polling durante criação de nova sessão');
+            return;
+        }
 
         console.log('ID da sessão ativa:', sessionId);
 
@@ -252,45 +317,94 @@ export function useChat(userId?: string): UseChatReturn {
             clearInterval(pollingIntervalRef.current);
         }
 
+        console.log(`Iniciando polling a cada ${POLLING_INTERVAL}ms`);
         pollingIntervalRef.current = setInterval(() => {
-            loadMessagesForSession(sessionId);
-        }, 1000);
+            if (!isCreatingSessionRef.current) {
+                loadMessagesForSession(sessionId);
+            }
+        }, POLLING_INTERVAL);
 
         return () => {
             if (pollingIntervalRef.current) {
                 clearInterval(pollingIntervalRef.current);
+                console.log('Polling interrompido ao mudar de sessão');
             }
         };
-    }, [sessionId]);
+    }, [sessionId, loadMessagesForSession]);
 
     // Mudar sessão
     const changeSession = (newSessionId: string) => {
-        if (!newSessionId || newSessionId === sessionId) return;
+        if (!newSessionId || newSessionId.trim() === sessionId.trim()) return;
 
-        console.log('Mudando para sessão:', newSessionId);
-        setSessionId(newSessionId);
+        // Limpar qualquer mensagem pendente ao mudar de sessão
+        pendingMessageRef.current = null;
+
+        // Garantir que o novo sessionId esteja limpo
+        const trimmedNewSessionId = newSessionId.trim();
+        console.log('Mudando para sessão:', trimmedNewSessionId);
+        setSessionId(trimmedNewSessionId);
         setError(null);
     };
 
-    // Criar nova sessão
-    const createNewSession = async (): Promise<string | null> => {
+    // Criar nova sessão - MODIFICADA para aceitar um ID específico
+    const createNewSession = async (specificId?: string): Promise<string | null> => {
         try {
-            const newSessionId = uuidv4();
-            console.log('Criando nova sessão:', newSessionId);
-            setSessionId(newSessionId);
-            setMessages([]);
-            setIsProcessing(false);
+            // Se já estiver criando, evitar duplicação
+            if (isCreatingSessionRef.current) {
+                console.log('Já está criando uma nova sessão, ignorando');
+                return null;
+            }
+
+            isCreatingSessionRef.current = true;
+            console.log('Iniciando criação de nova sessão...');
+
+            // Parar o polling temporariamente
+            if (pollingIntervalRef.current) {
+                clearInterval(pollingIntervalRef.current);
+                console.log('Polling interrompido durante criação de nova sessão');
+            }
+
+            // Limpar qualquer mensagem pendente
+            pendingMessageRef.current = null;
+
+            // Usar o ID específico se fornecido, ou gerar um novo
+            const newSessionId = specificId ? specificId : uuidv4();
+            console.log('ID da nova sessão:', newSessionId);
+
+            // Limpar os estados em ordem específica
             setSessionLimitReached(false);
+            setIsProcessing(false);
             setError(null);
-            // Adicionar apenas se não existir
-            setActiveSessions(prev => {
-                if (prev.includes(newSessionId)) return prev;
-                return [newSessionId, ...prev];
-            });
+            setMessages([]);
+
+            // Importante: Primeiro atualizar a lista de sessões ativas
+            const updatedSessions = [newSessionId, ...activeSessions.filter(id => id !== newSessionId)];
+            setActiveSessions(updatedSessions);
+            console.log('Lista de sessões atualizada:', updatedSessions);
+
+            // Depois atualizar o ID da sessão atual
+            setSessionId(newSessionId);
+            console.log('ID da sessão atual atualizado para:', newSessionId);
+
+            // Reiniciar o polling após uma pausa curta
+            setTimeout(() => {
+                console.log(`Reiniciando polling após criação de nova sessão`);
+                pollingIntervalRef.current = setInterval(() => {
+                    if (!isCreatingSessionRef.current) {
+                        loadMessagesForSession(newSessionId);
+                    }
+                }, POLLING_INTERVAL);
+
+                // Permitir que novas sessões sejam criadas novamente
+                isCreatingSessionRef.current = false;
+            }, 500);
+
+            console.log('Nova sessão criada com sucesso:', newSessionId);
             return newSessionId;
         } catch (err) {
             console.error('Erro ao criar nova sessão:', err);
             setError('Falha ao criar nova sessão');
+            isCreatingSessionRef.current = false;
             return null;
         }
     };
@@ -313,8 +427,12 @@ export function useChat(userId?: string): UseChatReturn {
         }
 
         try {
+            // Garantir que o sessionId esteja limpo
+            const trimmedSessionId = sessionId.trim();
+            console.log(`Enviando mensagem para sessionId: ${trimmedSessionId}`);
+
             // Verificar limite de mensagens novamente
-            const humanCount = await countHumanMessages(sessionId);
+            const humanCount = await countHumanMessages(trimmedSessionId);
             console.log(`Contagem de mensagens humanas: ${humanCount}/${MAX_HUMAN_MESSAGES_PER_SESSION}`);
 
             if (humanCount >= MAX_HUMAN_MESSAGES_PER_SESSION) {
@@ -326,24 +444,27 @@ export function useChat(userId?: string): UseChatReturn {
             setError(null);
             setIsProcessing(true);
 
-            console.log('Enviando mensagem para sessão:', sessionId);
+            console.log('Enviando mensagem para sessão:', trimmedSessionId);
 
-            // Criar objeto de mensagem
+            // Criar objeto de mensagem do usuário
             const userMessage: ChatMessage = {
                 type: 'human',
                 content: content.trim()
             };
 
-            // Atualizar UI imediatamente
+            // Armazenar a mensagem pendente para referência
+            pendingMessageRef.current = userMessage;
+
+            // Atualizar UI imediatamente (apenas localmente)
             setMessages(prev => [...prev, userMessage]);
 
-            // Enviar para o webhook do n8n
+            // NÃO salvar no Supabase diretamente - apenas enviar para o webhook do n8n
             const webhookUrl = process.env.NEXT_PUBLIC_N8N_WEBHOOK_URL;
             if (!webhookUrl) {
                 throw new Error('URL do webhook não configurada');
             }
 
-            console.log('Enviando para webhook com sessionId:', sessionId);
+            console.log('Enviando para webhook com sessionId:', trimmedSessionId);
             const response = await fetch(webhookUrl, {
                 method: 'POST',
                 headers: {
@@ -351,7 +472,7 @@ export function useChat(userId?: string): UseChatReturn {
                 },
                 body: JSON.stringify({
                     chatInput: content.trim(),
-                    sessionId: sessionId,
+                    sessionId: trimmedSessionId, // Enviar sessionId limpo
                     userId: userId || 'anônimo'
                 })
             });
@@ -367,8 +488,17 @@ export function useChat(userId?: string): UseChatReturn {
             setError(err.message || 'Falha ao enviar mensagem');
             setIsProcessing(false);
 
-            // Remover a mensagem que adicionamos à UI em caso de erro
-            setMessages(prev => prev.slice(0, -1));
+            // Em caso de erro, remover a mensagem pendente
+            pendingMessageRef.current = null;
+
+            // Remover a mensagem local que adicionamos
+            setMessages(prev => {
+                // Se temos mensagens e a última é do tipo human, remover
+                if (prev.length > 0 && prev[prev.length - 1].type === 'human') {
+                    return prev.slice(0, -1);
+                }
+                return prev;
+            });
         }
     };
 

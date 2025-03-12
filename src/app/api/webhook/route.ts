@@ -11,7 +11,10 @@ export async function POST(request: NextRequest) {
         // Esperamos receber do n8n a resposta do agente
         const { session_id, response, user_id, metadata } = data;
 
-        if (!session_id || !response) {
+        // Remover espaços extras do session_id
+        const trimmedSessionId = session_id ? session_id.trim() : null;
+
+        if (!trimmedSessionId || !response) {
             console.error('Requisição inválida: session_id ou response ausentes');
             return NextResponse.json(
                 { error: 'session_id e response são obrigatórios' },
@@ -19,8 +22,8 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        // Verificações adicionais de segurança podem ser adicionadas aqui
-        // Por exemplo, verificar uma chave de API ou token
+        console.log(`ID de sessão recebido: "${session_id}" -> Após trim: "${trimmedSessionId}"`);
+        console.log(`Preparando para salvar resposta de tamanho ${response.length}`);
 
         // Criar a mensagem do assistente
         const aiMessage: ChatMessage = {
@@ -28,14 +31,15 @@ export async function POST(request: NextRequest) {
             content: response
         };
 
-        // Salvar resposta do agente no BD
-        const { error } = await supabase
+        // Salvar resposta do agente no BD com o ID limpo
+        const { data: savedData, error } = await supabase
             .from('n8n_chat_histories')
             .insert([{
-                session_id,
+                session_id: trimmedSessionId,
                 message: aiMessage,
                 metadata // opcional: armazenar metadados adicionais se fornecidos
-            }]);
+            }])
+            .select();
 
         if (error) {
             console.error('Erro ao salvar resposta do agente:', error);
@@ -45,11 +49,13 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        console.log(`Resposta do n8n salva com sucesso para a sessão ${session_id}`);
+        console.log(`Resposta do n8n salva com sucesso para a sessão ${trimmedSessionId}`);
+        console.log(`ID do registro salvo: ${savedData?.[0]?.id || 'N/A'}`);
 
         return NextResponse.json({
             success: true,
-            message: 'Resposta processada com sucesso'
+            message: 'Resposta processada com sucesso',
+            record_id: savedData?.[0]?.id
         });
     } catch (error: any) {
         console.error('Erro no webhook:', error);

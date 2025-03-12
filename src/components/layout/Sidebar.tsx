@@ -2,24 +2,22 @@ import { useState, useEffect, useRef } from 'react';
 import { useTheme } from '@/context/ThemeContext';
 import { supabase } from '@/lib/supabase';
 import TypingEffect from '@/components/chat/TypingEffect';
+import { SessionInfo } from '@/types/chat';
 
 interface SidebarProps {
     isOpen: boolean;
     toggleSidebar: () => void;
     activeSessions: string[];
+    sessionInfos: Map<string, SessionInfo>;
     currentSessionId: string;
     onSessionSelect: (sessionId: string) => void;
     onNewSession: () => Promise<string | null>;
+    onRenameSession: (sessionId: string, newTitle: string) => Promise<boolean>;
+    onDeleteSession: (sessionId: string) => Promise<boolean>;
     userId?: string;
     isCreatingSession?: boolean;
     isNewConversation?: boolean;
     lastMessageTimestamp?: number;
-}
-
-interface SessionInfo {
-    id: string;
-    firstMessage: string;
-    isNew?: boolean;
 }
 
 // Chave para o localStorage - sessões que já mostraram efeito de digitação
@@ -29,28 +27,32 @@ export default function Sidebar({
     isOpen,
     toggleSidebar,
     activeSessions,
+    sessionInfos,
     currentSessionId,
     onSessionSelect,
     onNewSession,
+    onRenameSession,
+    onDeleteSession,
     userId,
     isCreatingSession = false,
     isNewConversation = false,
     lastMessageTimestamp = 0
 }: SidebarProps) {
     const [creating, setCreating] = useState(false);
-    const [sessionInfos, setSessionInfos] = useState<Map<string, SessionInfo>>(new Map());
+    const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
+    const [newTitle, setNewTitle] = useState('');
+    const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
     const { isDarkMode } = useTheme();
+    const editInputRef = useRef<HTMLInputElement>(null);
 
     // Referência para controlar a carga inicial
     const isInitialLoad = useRef(true);
-    // Referência para detectar se é o primeiro carregamento da página atual (diferente da carga inicial)
+    // Referência para detectar se é o primeiro carregamento da página atual
     const isFirstPageLoadRef = useRef(true);
     // Conjunto para armazenar IDs de sessões onde o efeito já foi mostrado
     const animationShownSessions = useRef<Set<string>>(new Set());
     // Última sessão criada
     const lastCreatedSessionId = useRef<string | null>(null);
-    // Polling específico para novas sessões
-    const newSessionPollingRef = useRef<NodeJS.Timeout | null>(null);
 
     // Carregar lista de sessões que já mostraram animação do localStorage
     useEffect(() => {
@@ -108,258 +110,19 @@ export default function Sidebar({
         }
     }, [isCreatingSession]);
 
-    // Implementar um polling específico para a última sessão criada
+    // Focar no input de edição quando estiver visível
     useEffect(() => {
-        // Limpar polling existente
-        if (newSessionPollingRef.current) {
-            clearInterval(newSessionPollingRef.current);
-            newSessionPollingRef.current = null;
+        if (editingSessionId && editInputRef.current) {
+            editInputRef.current.focus();
         }
-
-        // Se tivermos uma nova sessão e o lastMessageTimestamp mudar (indicando atividade)
-        if (lastCreatedSessionId.current && lastMessageTimestamp > 0) {
-            console.log('Iniciando polling específico para nova sessão:', lastCreatedSessionId.current);
-
-            // Função para carregar apenas a sessão específica
-            const loadNewSessionInfo = async () => {
-                if (!lastCreatedSessionId.current) return;
-
-                const sessionId = lastCreatedSessionId.current;
-                const trimmedSessionId = sessionId.trim();
-
-                try {
-                    console.log('Verificando atualização de título para sessão nova:', trimmedSessionId);
-
-                    // Buscar mensagens para esta sessão específica
-                    const { data, error } = await supabase
-                        .from('n8n_chat_histories')
-                        .select('message')
-                        .or(`session_id.eq.${trimmedSessionId},session_id.eq. ${trimmedSessionId}`)
-                        .order('id');
-
-                    if (error) {
-                        console.error('Erro ao buscar mensagens:', error);
-                        return;
-                    }
-
-                    if (!data || data.length === 0) {
-                        console.log('Nenhuma mensagem encontrada ainda para a nova sessão');
-                        return;
-                    }
-
-                    // Filtrar mensagens humanas
-                    const humanMessages = data.filter(item => {
-                        try {
-                            return item &&
-                                item.message &&
-                                typeof item.message === 'object' &&
-                                item.message.type === 'human' &&
-                                typeof item.message.content === 'string';
-                        } catch {
-                            return false;
-                        }
-                    });
-
-                    if (humanMessages.length === 0) {
-                        console.log('Nenhuma mensagem humana encontrada ainda');
-                        return;
-                    }
-
-                    // Obter primeira mensagem humana
-                    const content = humanMessages[0].message.content;
-                    const firstMessage = content.length > 30
-                        ? content.substring(0, 30) + '...'
-                        : content;
-
-                    console.log('Primeira mensagem para a nova sessão:', firstMessage);
-
-                    // Verificar se a mensagem é diferente da atual
-                    const currentInfo = sessionInfos.get(trimmedSessionId);
-                    const currentMessage = currentInfo?.firstMessage || 'Nova conversa';
-
-                    if (currentMessage === 'Nova conversa' && firstMessage !== 'Nova conversa') {
-                        console.log('Atualizando título da nova sessão:', firstMessage);
-
-                        // Atualizar o sessionInfos
-                        const updatedInfos = new Map(sessionInfos);
-                        updatedInfos.set(trimmedSessionId, {
-                            id: trimmedSessionId,
-                            firstMessage,
-                            isNew: true // Mostrar efeito de digitação
-                        });
-
-                        setSessionInfos(updatedInfos);
-
-                        // Parar o polling depois de encontrar o título
-                        if (newSessionPollingRef.current) {
-                            clearInterval(newSessionPollingRef.current);
-                            newSessionPollingRef.current = null;
-                        }
-                    }
-                } catch (err) {
-                    console.error('Erro ao buscar título da nova sessão:', err);
-                }
-            };
-
-            // Verificar imediatamente
-            loadNewSessionInfo();
-
-            // Iniciar polling para esta sessão específica (a cada 1 segundo)
-            newSessionPollingRef.current = setInterval(loadNewSessionInfo, 1000);
-
-            // Limpar após 30 segundos no máximo
-            setTimeout(() => {
-                if (newSessionPollingRef.current) {
-                    clearInterval(newSessionPollingRef.current);
-                    newSessionPollingRef.current = null;
-                    console.log('Polling específico para nova sessão finalizado (timeout)');
-                }
-            }, 30000);
-
-            // Limpar polling se o componente desmontar
-            return () => {
-                if (newSessionPollingRef.current) {
-                    clearInterval(newSessionPollingRef.current);
-                    newSessionPollingRef.current = null;
-                }
-            };
-        }
-    }, [lastMessageTimestamp, lastCreatedSessionId.current, sessionInfos]);
-
-    // Efeito para carregar informações das sessões 
-    useEffect(() => {
-        const loadSessionInfos = async () => {
-            if (activeSessions.length === 0) return;
-
-            console.log('Carregando informações para sessões:', activeSessions);
-
-            // Clone o Map para manter estados não alterados
-            const newSessionInfos = new Map<string, SessionInfo>(sessionInfos);
-
-            const sessionsToLoad = activeSessions.filter(sessionId => {
-                const trimmedId = sessionId.trim();
-                const existingInfo = sessionInfos.get(trimmedId);
-                const isLastCreated = trimmedId === lastCreatedSessionId.current;
-
-                // Lógica de quando carregar:
-                // 1. Na primeira carga, carregamos todas
-                // 2. Para a última sessão criada, sempre recarregamos (para pegar título atualizado)
-                // 3. Para as demais, só carregamos se não existirem ou forem "Nova conversa"
-                return isInitialLoad.current ||
-                    isLastCreated ||
-                    !existingInfo ||
-                    existingInfo.firstMessage === "Nova conversa";
-            });
-
-            console.log(`Carregando ${sessionsToLoad.length} sessões (inicial: ${isInitialLoad.current})`);
-
-            await Promise.all(sessionsToLoad.map(async (sessionId) => {
-                try {
-                    const trimmedSessionId = sessionId.trim();
-                    console.log('Carregando info para sessão:', trimmedSessionId);
-
-                    const { data, error } = await supabase
-                        .from('n8n_chat_histories')
-                        .select('message')
-                        .or(`session_id.eq.${trimmedSessionId},session_id.eq. ${trimmedSessionId}`)
-                        .order('id');
-
-                    if (error) {
-                        console.error('Erro ao carregar mensagens:', error);
-                        throw error;
-                    }
-
-                    let firstMessage = 'Nova conversa';
-
-                    if (data && data.length > 0) {
-                        const humanMessages = data.filter(item => {
-                            try {
-                                return item &&
-                                    item.message &&
-                                    typeof item.message === 'object' &&
-                                    item.message.type === 'human' &&
-                                    typeof item.message.content === 'string';
-                            } catch {
-                                return false;
-                            }
-                        });
-
-                        if (humanMessages.length > 0) {
-                            const content = humanMessages[0].message.content;
-                            firstMessage = content.length > 30
-                                ? content.substring(0, 30) + '...'
-                                : content;
-                        }
-                    }
-
-                    const existingInfo = sessionInfos.get(trimmedSessionId);
-                    const hasContent = firstMessage !== 'Nova conversa';
-                    const isLastCreated = trimmedSessionId === lastCreatedSessionId.current;
-                    const hasShownAnimation = animationShownSessions.current.has(trimmedSessionId);
-
-                    // Lógica de quando mostrar animação:
-                    let shouldAnimate = false;
-
-                    if (isLastCreated && hasContent) {
-                        // Para a última sessão criada, sempre animar quando tiver conteúdo
-                        const currentMessage = existingInfo?.firstMessage || '';
-                        shouldAnimate = currentMessage !== firstMessage;
-                    } else if (isInitialLoad.current || isFirstPageLoadRef.current) {
-                        // Na carga inicial da app OU primeiro carregamento da página, animar se tem conteúdo
-                        shouldAnimate = hasContent;
-                    } else if (existingInfo) {
-                        // Para sessões existentes, animar apenas se mudou de "Nova conversa" para conteúdo real
-                        // E não tiver mostrado animação antes
-                        shouldAnimate = hasContent &&
-                            existingInfo.firstMessage === 'Nova conversa' &&
-                            !hasShownAnimation;
-                    }
-
-                    // Atualizar as informações da sessão
-                    newSessionInfos.set(trimmedSessionId, {
-                        id: trimmedSessionId,
-                        firstMessage,
-                        isNew: shouldAnimate
-                    });
-
-                    // Se esta é a sessão ativa, nunca mostrar animação
-                    if (trimmedSessionId === currentSessionId && !isNewConversation) {
-                        const info = newSessionInfos.get(trimmedSessionId);
-                        if (info && info.isNew) {
-                            newSessionInfos.set(trimmedSessionId, {
-                                ...info,
-                                isNew: false
-                            });
-
-                            // Marcar como já tendo mostrado
-                            markAnimationShown(trimmedSessionId);
-                        }
-                    }
-                } catch (err) {
-                    console.error('Erro ao processar sessão:', err);
-                    const trimmedId = sessionId.trim();
-                    newSessionInfos.set(trimmedId, {
-                        id: trimmedId,
-                        firstMessage: `Conversa ${trimmedId.substring(0, 5)}...`,
-                        isNew: false
-                    });
-                }
-            }));
-
-            // Atualizar estado
-            setSessionInfos(newSessionInfos);
-
-            // Após a primeira carga, desativar a flag
-            if (isInitialLoad.current) {
-                isInitialLoad.current = false;
-            }
-        };
-
-        loadSessionInfos();
-    }, [activeSessions, lastMessageTimestamp, currentSessionId, isNewConversation]);
+    }, [editingSessionId]);
 
     const handleNewSession = async () => {
-        if (creating || isCreatingSession) return;
+        // Não criar nova sessão se já estiver criando ou se já há uma conversa nova
+        if (creating || isCreatingSession || isNewConversation) {
+            console.log("Já existe uma conversa nova ou está criando. Ignorando.");
+            return;
+        }
 
         setCreating(true);
         try {
@@ -370,25 +133,23 @@ export default function Sidebar({
                 // Registrar a nova sessão
                 lastCreatedSessionId.current = newSessionId;
                 console.log("Nova sessão criada, ID registrado:", newSessionId);
-
-                // Adicionar entrada inicial ao sessionInfos
-                const trimmedId = newSessionId.trim();
-                const updatedInfos = new Map(sessionInfos);
-                updatedInfos.set(trimmedId, {
-                    id: trimmedId,
-                    firstMessage: 'Nova conversa',
-                    isNew: false // Não mostrar animação até ter conteúdo real
-                });
-                setSessionInfos(updatedInfos);
             }
         } catch (error) {
             console.error("Erro ao criar nova sessão:", error);
+        } finally {
+            // Garantir que o estado creating seja resetado
+            setTimeout(() => {
+                setCreating(false);
+            }, 500);
         }
     };
 
-    // MODIFICADO: handleSelectSession mais simples sem delays condicionais
     const handleSelectSession = (sessionId: string) => {
         if (creating) return;
+
+        // Cancelar qualquer edição em andamento
+        setEditingSessionId(null);
+        setShowDeleteConfirm(null);
 
         const trimmedId = sessionId.trim();
         console.log('Selecionando sessão:', trimmedId);
@@ -397,20 +158,62 @@ export default function Sidebar({
         isFirstPageLoadRef.current = false;
 
         // Desativar a animação nesta sessão e marcá-la como já mostrada
-        const updatedInfos = new Map(sessionInfos);
-
-        // Desativar animações para TODAS as sessões para evitar re-animações
-        for (const [id, sessionInfo] of updatedInfos.entries()) {
+        for (const [id, sessionInfo] of sessionInfos.entries()) {
             if (sessionInfo.isNew) {
-                updatedInfos.set(id, { ...sessionInfo, isNew: false });
                 markAnimationShown(id);
             }
         }
 
-        setSessionInfos(updatedInfos);
-
         // Chamar o seletor de sessão imediatamente, sem delay
         onSessionSelect(trimmedId);
+    };
+
+    const startEditSession = (e: React.MouseEvent, sessionId: string) => {
+        e.stopPropagation(); // Evitar que o clique selecione a sessão
+
+        const trimmedId = sessionId.trim();
+        const sessionInfo = sessionInfos.get(trimmedId);
+
+        if (sessionInfo) {
+            setEditingSessionId(trimmedId);
+            setNewTitle(sessionInfo.title || 'Nova Conversa');
+        }
+    };
+
+    const handleSaveTitle = async (e: React.FormEvent) => {
+        e.preventDefault();
+
+        if (!editingSessionId || !newTitle.trim()) {
+            setEditingSessionId(null);
+            return;
+        }
+
+        try {
+            const success = await onRenameSession(editingSessionId, newTitle.trim());
+            if (success) {
+                console.log('Título atualizado com sucesso');
+            }
+        } catch (error) {
+            console.error('Erro ao salvar título:', error);
+        } finally {
+            setEditingSessionId(null);
+        }
+    };
+
+    const cancelEdit = () => {
+        setEditingSessionId(null);
+    };
+
+    const confirmDeleteSession = async (sessionId: string) => {
+        try {
+            const success = await onDeleteSession(sessionId);
+            if (success) {
+                console.log('Sessão excluída com sucesso');
+                setShowDeleteConfirm(null);
+            }
+        } catch (error) {
+            console.error('Erro ao excluir sessão:', error);
+        }
     };
 
     const hasDuplicateSessions = (): boolean => {
@@ -439,7 +242,10 @@ export default function Sidebar({
         sidebarStyle.transform = 'translateX(0)';
     }
 
-    const uniqueSessions = Array.from(new Set(activeSessions.map(id => id.trim())));
+    // Filtra a conversa vazia atual da lista se for o caso
+    // Isso evita que a conversa vazia atual apareça no sidebar
+    const uniqueSessions = Array.from(new Set(activeSessions.map(id => id.trim())))
+        .filter(id => !(isNewConversation && id === currentSessionId));
 
     return (
         <div style={sidebarStyle}>
@@ -478,7 +284,7 @@ export default function Sidebar({
             <div style={{ padding: '16px' }}>
                 <button
                     onClick={handleNewSession}
-                    disabled={creating || isCreatingSession}
+                    disabled={creating || isCreatingSession || isNewConversation}
                     style={{
                         width: '100%',
                         display: 'flex',
@@ -490,8 +296,8 @@ export default function Sidebar({
                         border: 'none',
                         borderRadius: '8px',
                         fontWeight: '500',
-                        cursor: (creating || isCreatingSession) ? 'not-allowed' : 'pointer',
-                        opacity: (creating || isCreatingSession) ? 0.7 : 1,
+                        cursor: (creating || isCreatingSession || isNewConversation) ? 'not-allowed' : 'pointer',
+                        opacity: (creating || isCreatingSession || isNewConversation) ? 0.7 : 1,
                         transition: 'background-color 0.2s',
                         boxShadow: 'var(--shadow-sm)'
                     }}
@@ -595,77 +401,224 @@ export default function Sidebar({
                         {uniqueSessions.map((session) => {
                             const trimmedSession = session.trim();
                             const isActive = currentSessionId.trim() === trimmedSession && !isNewConversation;
+                            const sessionInfo = sessionInfos.get(trimmedSession);
+                            const isEditing = editingSessionId === trimmedSession;
+                            const isConfirmingDelete = showDeleteConfirm === trimmedSession;
 
                             return (
-                                <li key={trimmedSession}>
-                                    <button
-                                        onClick={() => handleSelectSession(trimmedSession)}
-                                        style={{
+                                <li key={trimmedSession} className="session-item">
+                                    {isEditing ? (
+                                        // Modo de edição do título
+                                        <form onSubmit={handleSaveTitle} style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            padding: '6px',
+                                            backgroundColor: 'var(--background-subtle)',
+                                            borderRadius: '8px',
+                                            gap: '6px'
+                                        }}>
+                                            <input
+                                                ref={editInputRef}
+                                                type="text"
+                                                value={newTitle}
+                                                onChange={(e) => setNewTitle(e.target.value)}
+                                                style={{
+                                                    flex: 1,
+                                                    border: 'none',
+                                                    padding: '8px',
+                                                    borderRadius: '6px',
+                                                    backgroundColor: 'var(--background-main)',
+                                                    color: 'var(--text-primary)',
+                                                    fontSize: '14px'
+                                                }}
+                                                placeholder="Nome da conversa"
+                                            />
+                                            <button
+                                                type="submit"
+                                                style={{
+                                                    padding: '6px',
+                                                    color: 'var(--primary-color)',
+                                                    backgroundColor: 'transparent',
+                                                    border: 'none',
+                                                    borderRadius: '4px',
+                                                    cursor: 'pointer',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center'
+                                                }}
+                                                title="Salvar"
+                                            >
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                    <polyline points="20 6 9 17 4 12"></polyline>
+                                                </svg>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={cancelEdit}
+                                                style={{
+                                                    padding: '6px',
+                                                    color: 'var(--text-tertiary)',
+                                                    backgroundColor: 'transparent',
+                                                    border: 'none',
+                                                    borderRadius: '4px',
+                                                    cursor: 'pointer',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center'
+                                                }}
+                                                title="Cancelar"
+                                            >
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                                                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                                                </svg>
+                                            </button>
+                                        </form>
+                                    ) : isConfirmingDelete ? (
+                                        // Confirmação de exclusão
+                                        <div style={{
+                                            padding: '10px',
+                                            backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                                            borderRadius: '8px',
+                                            borderLeft: '3px solid var(--error-color)'
+                                        }}>
+                                            <p style={{
+                                                fontSize: '13px',
+                                                color: 'var(--text-primary)',
+                                                marginBottom: '8px'
+                                            }}>
+                                                Excluir esta conversa?
+                                            </p>
+                                            <div style={{
+                                                display: 'flex',
+                                                gap: '6px',
+                                                justifyContent: 'flex-end'
+                                            }}>
+                                                <button
+                                                    onClick={() => setShowDeleteConfirm(null)}
+                                                    style={{
+                                                        padding: '4px 8px',
+                                                        fontSize: '12px',
+                                                        backgroundColor: 'var(--background-main)',
+                                                        color: 'var(--text-primary)',
+                                                        border: '1px solid var(--border-color)',
+                                                        borderRadius: '4px',
+                                                        cursor: 'pointer'
+                                                    }}
+                                                >
+                                                    Cancelar
+                                                </button>
+                                                <button
+                                                    onClick={() => confirmDeleteSession(trimmedSession)}
+                                                    style={{
+                                                        padding: '4px 8px',
+                                                        fontSize: '12px',
+                                                        backgroundColor: 'var(--error-color)',
+                                                        color: 'white',
+                                                        border: 'none',
+                                                        borderRadius: '4px',
+                                                        cursor: 'pointer'
+                                                    }}
+                                                >
+                                                    Excluir
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        // Exibição normal da sessão
+                                        <div style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
                                             width: '100%',
-                                            textAlign: 'left',
-                                            padding: '10px 12px',
                                             borderRadius: '8px',
                                             backgroundColor: isActive
                                                 ? 'var(--background-subtle)'
                                                 : 'transparent',
-                                            color: isActive
-                                                ? 'var(--text-primary)'
-                                                : 'var(--text-secondary)',
-                                            border: 'none',
-                                            cursor: creating ? 'not-allowed' : 'pointer',
                                             transition: 'background-color 0.2s',
-                                            fontWeight: isActive ? '500' : 'normal',
-                                            overflow: 'hidden',
-                                            textOverflow: 'ellipsis',
-                                            whiteSpace: 'nowrap',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: '8px',
-                                            opacity: creating ? 0.6 : 1
-                                        }}
-                                    >
-                                        <svg
-                                            xmlns="http://www.w3.org/2000/svg"
-                                            width="16"
-                                            height="16"
-                                            viewBox="0 0 24 24"
-                                            fill="none"
-                                            stroke="currentColor"
-                                            strokeWidth="2"
-                                            strokeLinecap="round"
-                                            strokeLinejoin="round"
-                                        >
-                                            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-                                        </svg>
-                                        <span style={{
-                                            fontWeight: '500',
-                                            overflow: 'hidden',
-                                            textOverflow: 'ellipsis'
+                                            position: 'relative'
                                         }}>
-                                            {sessionInfos.has(trimmedSession) && sessionInfos.get(trimmedSession)!.isNew ? (
-                                                <TypingEffect
-                                                    text={sessionInfos.get(trimmedSession)!.firstMessage}
-                                                    typingSpeed={15}
-                                                    onComplete={() => {
-                                                        // Remover flag isNew e marcar como já mostrada
-                                                        const updatedInfos = new Map(sessionInfos);
-                                                        const info = updatedInfos.get(trimmedSession);
-                                                        if (info) {
-                                                            updatedInfos.set(trimmedSession, { ...info, isNew: false });
-                                                            setSessionInfos(updatedInfos);
+                                            <button
+                                                onClick={() => handleSelectSession(trimmedSession)}
+                                                style={{
+                                                    flex: 1,
+                                                    textAlign: 'left',
+                                                    padding: '10px 12px',
+                                                    backgroundColor: 'transparent',
+                                                    color: isActive
+                                                        ? 'var(--text-primary)'
+                                                        : 'var(--text-secondary)',
+                                                    border: 'none',
+                                                    cursor: creating ? 'not-allowed' : 'pointer',
+                                                    fontWeight: isActive ? '500' : 'normal',
+                                                    overflow: 'hidden',
+                                                    textOverflow: 'ellipsis',
+                                                    whiteSpace: 'nowrap',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '8px',
+                                                    opacity: creating ? 0.6 : 1
+                                                }}
+                                            >
+                                                <svg
+                                                    xmlns="http://www.w3.org/2000/svg"
+                                                    width="16"
+                                                    height="16"
+                                                    viewBox="0 0 24 24"
+                                                    fill="none"
+                                                    stroke="currentColor"
+                                                    strokeWidth="2"
+                                                    strokeLinecap="round"
+                                                    strokeLinejoin="round"
+                                                >
+                                                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                                                </svg>
+                                                <span style={{
+                                                    fontWeight: '500',
+                                                    overflow: 'hidden',
+                                                    textOverflow: 'ellipsis'
+                                                }}>
+                                                    {sessionInfo?.isNew ? (
+                                                        <TypingEffect
+                                                            text={sessionInfo.title || 'Nova Conversa'}
+                                                            typingSpeed={15}
+                                                            onComplete={() => {
+                                                                markAnimationShown(trimmedSession);
+                                                            }}
+                                                        />
+                                                    ) : (
+                                                        sessionInfo?.title || 'Nova Conversa'
+                                                    )}
+                                                </span>
+                                            </button>
 
-                                                            // Marcar como já mostrada
-                                                            markAnimationShown(trimmedSession);
-                                                        }
+                                            {/* Botões de ação (apenas visíveis em hover ou para sessão ativa) */}
+                                            <div className="session-actions">
+                                                <button
+                                                    onClick={(e) => startEditSession(e, trimmedSession)}
+                                                    className="action-button"
+                                                    title="Renomear"
+                                                >
+                                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                                                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                                                    </svg>
+                                                </button>
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setShowDeleteConfirm(trimmedSession);
                                                     }}
-                                                />
-                                            ) : (
-                                                sessionInfos.has(trimmedSession)
-                                                    ? sessionInfos.get(trimmedSession)!.firstMessage
-                                                    : `Conversa ${trimmedSession.substring(0, 8)}...`
-                                            )}
-                                        </span>
-                                    </button>
+                                                    className="action-button"
+                                                    title="Excluir"
+                                                >
+                                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                        <polyline points="3 6 5 6 21 6"></polyline>
+                                                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                                                    </svg>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
                                 </li>
                             );
                         })}
@@ -683,65 +636,26 @@ export default function Sidebar({
                     padding: '0 4px',
                     marginBottom: '8px'
                 }}>
-                    Em breve:
+                    Recursos disponíveis:
                 </div>
                 <div style={{
                     display: 'flex',
                     flexDirection: 'column',
                     gap: '8px'
                 }}>
-                    <button
-                        style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '8px',
-                            width: '100%',
-                            textAlign: 'left',
-                            padding: '10px 12px',
-                            fontSize: '14px',
-                            color: 'var(--text-secondary)',
-                            backgroundColor: 'var(--background-subtle)',
-                            border: 'none',
-                            borderRadius: '8px',
-                            cursor: 'not-allowed',
-                            opacity: 0.7
-                        }}
-                        disabled
-                    >
-                        <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            width="16"
-                            height="16"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                        >
-                            <polyline points="3 6 5 6 21 6"></polyline>
-                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                        </svg>
-                        Limpar conversas
-                    </button>
-                    <button
-                        style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '8px',
-                            width: '100%',
-                            textAlign: 'left',
-                            padding: '10px 12px',
-                            fontSize: '14px',
-                            color: 'var(--text-secondary)',
-                            backgroundColor: 'var(--background-subtle)',
-                            border: 'none',
-                            borderRadius: '8px',
-                            cursor: 'not-allowed',
-                            opacity: 0.7
-                        }}
-                        disabled
-                    >
+                    <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        width: '100%',
+                        textAlign: 'left',
+                        padding: '10px 12px',
+                        fontSize: '14px',
+                        color: 'var(--text-secondary)',
+                        backgroundColor: 'var(--background-subtle)',
+                        border: 'none',
+                        borderRadius: '8px',
+                    }}>
                         <svg
                             xmlns="http://www.w3.org/2000/svg"
                             width="16"
@@ -756,10 +670,46 @@ export default function Sidebar({
                             <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
                             <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
                         </svg>
-                        Renomear conversa
-                    </button>
+                        Renomear conversas
+                    </div>
+                    <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        width: '100%',
+                        textAlign: 'left',
+                        padding: '10px 12px',
+                        fontSize: '14px',
+                        color: 'var(--text-secondary)',
+                        backgroundColor: 'var(--background-subtle)',
+                        border: 'none',
+                        borderRadius: '8px',
+                    }}>
+                        <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            width="16"
+                            height="16"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                        >
+                            <polyline points="3 6 5 6 21 6"></polyline>
+                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                        </svg>
+                        Excluir conversas
+                    </div>
                 </div>
             </div>
+
+            {/* Estilo para os botões de ação ficarem visíveis em hover */}
+            <style jsx>{`
+                li:hover .session-actions {
+                    opacity: 1;
+                }
+            `}</style>
         </div>
     );
 }

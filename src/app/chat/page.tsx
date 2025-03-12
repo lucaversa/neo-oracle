@@ -20,6 +20,7 @@ export default function ChatPage() {
     const lastMessageCountRef = useRef<number>(0);
     const creatingSessionRef = useRef<boolean>(false);
     const [isCreatingNewSession, setIsCreatingNewSession] = useState(false);
+    const [manualSessionChange, setManualSessionChange] = useState<boolean>(false);
 
     // Proteger a rota - redirecionar se não estiver autenticado
     useEffect(() => {
@@ -42,7 +43,8 @@ export default function ChatPage() {
         sessionLimitReached,
         isNewConversation,
         lastMessageTimestamp,
-        resetProcessingState
+        resetProcessingState,
+        updateLastMessageTimestamp
     } = useChat(user?.id);
 
     // Rolar para o final da conversa quando novas mensagens chegarem
@@ -63,12 +65,64 @@ export default function ChatPage() {
         }
     }, [messages]);
 
+    // NOVO: Effect para garantir carregamento após seleção
+    useEffect(() => {
+        if (manualSessionChange && sessionId && !loading) {
+            const timer = setTimeout(() => {
+                if (messages.length === 0) {
+                    console.log('Sem mensagens após timeout, forçando carregamento');
+                    changeSession(sessionId);
+                }
+            }, 1000);
+
+            return () => clearTimeout(timer);
+        }
+    }, [manualSessionChange, messages.length, sessionId, loading, changeSession]);
+
+    // NOVO: Verificar se precisamos atualizar a UI para primeira mensagem
+    useEffect(() => {
+        // Verificar se precisamos atualizar a UI
+        if (messages.length === 1 && messages[0].type === 'human' && isProcessing) {
+            // Uma única mensagem do usuário com estado de processamento ativo
+            // Configurar uma verificação periódica
+            const checkTimer = setInterval(() => {
+                console.log('Verificando atualizações para primeira mensagem');
+                // Forçar recarregamento da conversa atual
+                if (messages.length === 1 && messages[0].type === 'human' && isProcessing) {
+                    console.log('Ainda aguardando resposta, forçando atualização');
+                    // Use a função fornecida pelo hook
+                    updateLastMessageTimestamp();
+                } else {
+                    clearInterval(checkTimer);
+                }
+            }, 1000);
+
+            return () => clearInterval(checkTimer);
+        }
+    }, [messages, isProcessing, updateLastMessageTimestamp]);
+
     // Verificar se o estado de processamento está travado por muito tempo
     useEffect(() => {
         let processingTimer: NodeJS.Timeout | null = null;
+        let midCheckTimer: NodeJS.Timeout | null = null;
 
         if (isProcessing) {
-            // Se o estado de processamento ficar ativo por mais de 20 segundos, resetar
+            // Verificação intermediária após 10 segundos
+            midCheckTimer = setTimeout(() => {
+                console.log('Verificação intermediária do estado de processamento...');
+                // Se ainda estamos processando e temos mensagens, verificar se a última é do tipo 'ai'
+                if (isProcessing && messages.length > 0) {
+                    const lastMessage = messages[messages.length - 1];
+                    // Se a última mensagem for do tipo 'ai', mas ainda estamos em processamento, 
+                    // provavelmente o estado ficou preso
+                    if (lastMessage.type === 'ai') {
+                        console.log('Última mensagem é do AI mas estado ainda está processando. Corrigindo...');
+                        resetProcessingState();
+                    }
+                }
+            }, 10000); // 10 segundos
+
+            // Timer principal para resetar após 20 segundos incondicionalmente
             processingTimer = setTimeout(() => {
                 console.log('Estado de processamento ativo por muito tempo, resetando...');
                 resetProcessingState();
@@ -76,11 +130,14 @@ export default function ChatPage() {
         }
 
         return () => {
+            if (midCheckTimer) {
+                clearTimeout(midCheckTimer);
+            }
             if (processingTimer) {
                 clearTimeout(processingTimer);
             }
         };
-    }, [isProcessing, resetProcessingState]);
+    }, [isProcessing, resetProcessingState, messages]);
 
     // Mostrar um loading state enquanto verifica a autenticação
     if (authLoading) {
@@ -148,6 +205,34 @@ export default function ChatPage() {
         }
     };
 
+    // MODIFICADO: handleSessionSelect sem utilizar setMessages diretamente
+    const handleSessionSelect = (newSessionId: string) => {
+        // Limpar qualquer estado anterior
+        if (isProcessing) {
+            resetProcessingState();
+        }
+
+        // Marcar que esta é uma mudança manual
+        setManualSessionChange(true);
+
+        console.log('Mudança manual de sessão para:', newSessionId);
+
+        // Chamar a função de mudança sem nenhuma tentativa de manipular as mensagens aqui
+        changeSession(newSessionId);
+
+        // Reset após um tempo suficiente
+        setTimeout(() => {
+            setManualSessionChange(false);
+
+            // Verificação adicional para garantir que as mensagens foram carregadas
+            if (messages.length === 0 && !isNewConversation) {
+                console.log('Verificação secundária: forçando recarregamento');
+                changeSession(newSessionId);
+            }
+        }, 1500);
+    };
+
+    // MODIFICADO: handleSendMessage com verificações para primeira mensagem
     const handleSendMessage = async (content: string) => {
         // Se estamos criando uma nova sessão, não permitir envio
         if (isCreatingNewSession) {
@@ -161,6 +246,9 @@ export default function ChatPage() {
             resetProcessingState();
         }
 
+        // Verificar se é a primeira mensagem de uma nova conversa
+        const isFirstMessageInNewConversation = isNewConversation && messages.length === 0;
+
         if (sessionLimitReached) {
             // Criar automaticamente uma nova sessão se o limite for atingido
             const newSessionId = await handleNewSession();
@@ -171,25 +259,55 @@ export default function ChatPage() {
                 }, 300);
             }
         } else {
-            await sendMessage(content);
+            try {
+                // Tentar enviar a mensagem
+                await sendMessage(content);
 
-            // Verificar novamente se o estado de processamento foi aplicado
-            // Verificar novamente se o estado de processamento foi aplicado
-            if (!isProcessing && messages.length > 0 && messages[messages.length - 1].type === 'human') {
-                console.log('Estado de processamento não aplicado, forçando...');
-                // Não podemos usar setIsProcessing diretamente, então usamos uma abordagem alternativa
-                setTimeout(() => {
-                    // Esta é uma solução temporária - na próxima iteração do polling 
-                    // o estado deve ser atualizado automaticamente
-                    resetProcessingState(); // Resetamos primeiro para garantir estado limpo
-                    sendMessage(content); // Re-enviamos para garantir que o processamento seja aplicado
-                }, 300);
-                return; // Importante: retornar para evitar envio duplicado
+                // NOVO: Verificações específicas para primeira mensagem em nova conversa
+                if (isFirstMessageInNewConversation) {
+                    console.log('Primeira mensagem em nova conversa enviada, verificando estado...');
+
+                    // Forçar atualização da UI
+                    setTimeout(() => {
+                        // Se a mensagem não está visível, tentar forçar um refresh
+                        if (messages.length === 0 || (messages.length === 1 && messages[0].type === 'human')) {
+                            console.log('Forçando atualização da UI após primeira mensagem');
+                            // Use a função fornecida pelo hook
+                            updateLastMessageTimestamp();
+                        }
+                    }, 500);
+                }
+
+                // Após o envio bem-sucedido, verificar estado de processamento
+                if (!isProcessing && messages.length > 0 && messages[messages.length - 1].type === 'human') {
+                    console.log('Estado de processamento não aplicado, forçando verificação...');
+
+                    // Tentar carregar as mensagens novamente após um breve intervalo para ver se a resposta chegou
+                    setTimeout(() => {
+                        // Verificar novamente depois de um momento
+                        if (!isProcessing && messages.length > 0 && messages[messages.length - 1].type === 'human') {
+                            console.log('Estado ainda incorreto, tentando corrigir...');
+                            // Se ainda está incorreto, tente uma abordagem mais agressiva
+                            resetProcessingState(); // Limpa estado primeiro
+
+                            // Aguardar um pouco e tentar enviar novamente se necessário
+                            setTimeout(() => {
+                                if (messages.length > 0 && messages[messages.length - 1].type === 'human' && !isProcessing) {
+                                    console.log('Último recurso: tentando reenviar mensagem...');
+                                    sendMessage(content);
+                                }
+                            }, 500);
+                        }
+                    }, 300);
+                }
+            } catch (error) {
+                console.error('Erro ao enviar mensagem:', error);
             }
         }
     };
 
-    if (loading && !isNewConversation && messages.length === 0 && !isCreatingNewSession) {
+    // MODIFICADO: Condição de loading para evitar tela cheia durante mudanças de sessão
+    if (loading && !isNewConversation && messages.length === 0 && !isCreatingNewSession && !manualSessionChange) {
         return (
             <div className="flex items-center justify-center h-screen bg-background-main">
                 <div className="w-12 h-12 border-4 border-border-color border-t-primary-color rounded-full animate-spin"></div>
@@ -212,7 +330,7 @@ export default function ChatPage() {
                 toggleSidebar={handleToggleSidebar}
                 activeSessions={activeSessions}
                 currentSessionId={sessionId}
-                onSessionSelect={changeSession}
+                onSessionSelect={handleSessionSelect}  // Usar nossa função personalizada aqui
                 onNewSession={handleNewSession}
                 userId={user?.id}
                 isCreatingSession={isCreatingNewSession}
@@ -283,98 +401,116 @@ export default function ChatPage() {
                         position: 'relative'
                     }}
                 >
-                    <div style={{
-                        maxWidth: '900px',
-                        margin: '0 auto',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '8px',
-                        paddingBottom: '24px' // Espaço para o indicador "pensando"
-                    }}>
-                        {error && (
-                            <div style={{
-                                backgroundColor: 'rgba(239, 68, 68, 0.1)',
-                                borderLeft: '4px solid var(--error-color)',
-                                color: 'var(--error-color)',
-                                padding: '16px',
-                                marginBottom: '16px',
-                                borderRadius: '4px'
-                            }}>
-                                <p>{error}</p>
-                                {sessionLimitReached && (
-                                    <button
-                                        onClick={handleNewSession}
-                                        style={{
-                                            marginTop: '8px',
-                                            padding: '6px 12px',
-                                            backgroundColor: 'var(--primary-color)',
-                                            color: 'white',
-                                            borderRadius: '4px',
-                                            border: 'none',
-                                            cursor: 'pointer'
-                                        }}
-                                    >
-                                        Iniciar Nova Conversa
-                                    </button>
-                                )}
-                            </div>
-                        )}
-
-                        {(messages.length === 0 || isNewConversation) ? (
-                            <div style={{
-                                textAlign: 'center',
-                                padding: '60px 20px',
-                                display: 'flex',
-                                flexDirection: 'column',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                color: 'var(--text-secondary)'
-                            }}>
+                    {/* Indicador de loading localizado */}
+                    {manualSessionChange && messages.length === 0 ? (
+                        <div style={{
+                            position: 'absolute',
+                            top: '50%',
+                            left: '50%',
+                            transform: 'translate(-50%, -50%)',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            gap: '12px'
+                        }}>
+                            <div className="w-8 h-8 border-3 border-border-color border-t-primary-color rounded-full animate-spin"></div>
+                            <p style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>Carregando conversa...</p>
+                        </div>
+                    ) : (
+                        <div style={{
+                            maxWidth: '900px',
+                            margin: '0 auto',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '8px',
+                            paddingBottom: '24px' // Espaço para o indicador "pensando"
+                        }}>
+                            {error && (
                                 <div style={{
-                                    width: '80px',
-                                    height: '80px',
-                                    marginBottom: '24px',
-                                    backgroundColor: 'var(--background-subtle)',
-                                    borderRadius: '50%',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center'
+                                    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                                    borderLeft: '4px solid var(--error-color)',
+                                    color: 'var(--error-color)',
+                                    padding: '16px',
+                                    marginBottom: '16px',
+                                    borderRadius: '4px'
                                 }}>
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-                                        <line x1="9" y1="10" x2="15" y2="10"></line>
-                                        <line x1="12" y1="7" x2="12" y2="13"></line>
-                                    </svg>
+                                    <p>{error}</p>
+                                    {sessionLimitReached && (
+                                        <button
+                                            onClick={handleNewSession}
+                                            style={{
+                                                marginTop: '8px',
+                                                padding: '6px 12px',
+                                                backgroundColor: 'var(--primary-color)',
+                                                color: 'white',
+                                                borderRadius: '4px',
+                                                border: 'none',
+                                                cursor: 'pointer'
+                                            }}
+                                        >
+                                            Iniciar Nova Conversa
+                                        </button>
+                                    )}
                                 </div>
-                                <h2 style={{
-                                    fontSize: '24px',
-                                    fontWeight: '600',
-                                    color: 'var(--text-primary)',
-                                    marginBottom: '12px'
+                            )}
+
+                            {/* MODIFICADO: Condição para mostrar tela inicial ou mensagens */}
+                            {(isNewConversation && messages.length === 0) ? (
+                                <div style={{
+                                    textAlign: 'center',
+                                    padding: '60px 20px',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    color: 'var(--text-secondary)'
                                 }}>
-                                    Comece uma nova conversa
-                                </h2>
-                                <p style={{
-                                    color: 'var(--text-secondary)',
-                                    maxWidth: '500px',
-                                    margin: '0 auto'
-                                }}>
-                                    Envie uma mensagem para iniciar o chat com o Oráculo Empresarial
-                                </p>
-                            </div>
-                        ) : (
-                            <>
-                                {/* Renderizar todas as mensagens */}
-                                {messages.map((message, index) => (
-                                    <ChatBubble
-                                        key={`${sessionId}-${index}-${message.type}-${message.content.substring(0, 10)}`}
-                                        message={message}
-                                        userName={userName}
-                                    />
-                                ))}
-                            </>
-                        )}
-                    </div>
+                                    <div style={{
+                                        width: '80px',
+                                        height: '80px',
+                                        marginBottom: '24px',
+                                        backgroundColor: 'var(--background-subtle)',
+                                        borderRadius: '50%',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center'
+                                    }}>
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                                            <line x1="9" y1="10" x2="15" y2="10"></line>
+                                            <line x1="12" y1="7" x2="12" y2="13"></line>
+                                        </svg>
+                                    </div>
+                                    <h2 style={{
+                                        fontSize: '24px',
+                                        fontWeight: '600',
+                                        color: 'var(--text-primary)',
+                                        marginBottom: '12px'
+                                    }}>
+                                        Comece uma nova conversa
+                                    </h2>
+                                    <p style={{
+                                        color: 'var(--text-secondary)',
+                                        maxWidth: '500px',
+                                        margin: '0 auto'
+                                    }}>
+                                        Envie uma mensagem para iniciar o chat com o Oráculo Empresarial
+                                    </p>
+                                </div>
+                            ) : (
+                                <>
+                                    {/* Renderizar todas as mensagens */}
+                                    {messages.map((message, index) => (
+                                        <ChatBubble
+                                            key={`${sessionId}-${index}-${message.type}-${message.content.substring(0, 10)}`}
+                                            message={message}
+                                            userName={userName}
+                                        />
+                                    ))}
+                                </>
+                            )}
+                        </div>
+                    )}
                 </div>
 
                 {/* Indicador "O Oráculo está pensando..." */}

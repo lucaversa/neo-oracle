@@ -16,7 +16,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="pt-BR">
-      <body>
+      <body className="vsc-initialized">
         <AuthProvider>
           <ThemeProvider>
             <SessionTimeoutWrapper>

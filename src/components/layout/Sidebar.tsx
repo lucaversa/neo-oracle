@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useTheme } from '@/context/ThemeContext';
 import { supabase } from '@/lib/supabase';
 import TypingEffect from '@/components/chat/TypingEffect';
@@ -12,15 +12,18 @@ interface SidebarProps {
     onNewSession: () => Promise<string | null>;
     userId?: string;
     isCreatingSession?: boolean;
-    isNewConversation?: boolean; // Nova propriedade
-    lastMessageTimestamp?: number; // Nova propriedade para forçar atualização
+    isNewConversation?: boolean;
+    lastMessageTimestamp?: number;
 }
 
 interface SessionInfo {
     id: string;
     firstMessage: string;
-    isNew?: boolean; // Propriedade para controlar efeito de digitação
+    isNew?: boolean;
 }
+
+// Chave para o localStorage - sessões que já mostraram efeito de digitação
+const ANIMATION_SHOWN_SESSIONS_KEY = 'oracle_animation_shown_sessions';
 
 export default function Sidebar({
     isOpen,
@@ -38,12 +41,66 @@ export default function Sidebar({
     const [sessionInfos, setSessionInfos] = useState<Map<string, SessionInfo>>(new Map());
     const { isDarkMode } = useTheme();
 
+    // Referência para controlar a carga inicial
+    const isInitialLoad = useRef(true);
+    // Referência para detectar se é o primeiro carregamento da página atual (diferente da carga inicial)
+    const isFirstPageLoadRef = useRef(true);
+    // Conjunto para armazenar IDs de sessões onde o efeito já foi mostrado
+    const animationShownSessions = useRef<Set<string>>(new Set());
+    // Última sessão criada
+    const lastCreatedSessionId = useRef<string | null>(null);
+    // Polling específico para novas sessões
+    const newSessionPollingRef = useRef<NodeJS.Timeout | null>(null);
+
+    // Carregar lista de sessões que já mostraram animação do localStorage
+    useEffect(() => {
+        try {
+            // Se for o primeiro carregamento desta página, ignorar o localStorage para permitir animações
+            if (isFirstPageLoadRef.current) {
+                console.log('Primeiro carregamento da página: permitindo animações para todas as sessões');
+                // Não carregar do localStorage, deixar o conjunto vazio para permitir animações
+                animationShownSessions.current = new Set();
+                // Marcar que não é mais o primeiro carregamento
+                isFirstPageLoadRef.current = false;
+            } else {
+                // Comportamento normal para recargas subsequentes
+                const storedSessions = localStorage.getItem(ANIMATION_SHOWN_SESSIONS_KEY);
+                if (storedSessions) {
+                    const sessionsArray = JSON.parse(storedSessions);
+                    if (Array.isArray(sessionsArray)) {
+                        animationShownSessions.current = new Set(sessionsArray);
+                        console.log('Sessões que já mostraram animação:', sessionsArray.length);
+                    }
+                }
+            }
+        } catch (err) {
+            console.error('Erro ao carregar informações do localStorage:', err);
+        }
+    }, []);
+
+    // Função para marcar uma sessão como já tendo mostrado a animação
+    const markAnimationShown = (sessionId: string) => {
+        const trimmedId = sessionId.trim();
+        if (!animationShownSessions.current.has(trimmedId)) {
+            animationShownSessions.current.add(trimmedId);
+
+            // Persistir no localStorage
+            try {
+                localStorage.setItem(
+                    ANIMATION_SHOWN_SESSIONS_KEY,
+                    JSON.stringify(Array.from(animationShownSessions.current))
+                );
+            } catch (err) {
+                console.error('Erro ao salvar no localStorage:', err);
+            }
+        }
+    };
+
     // Usar a prop isCreatingSession para controlar o estado
     useEffect(() => {
         if (isCreatingSession) {
             setCreating(true);
         } else {
-            // Esperar um momento antes de esconder a animação
             const timer = setTimeout(() => {
                 setCreating(false);
             }, 500);
@@ -51,28 +108,156 @@ export default function Sidebar({
         }
     }, [isCreatingSession]);
 
-    // Carregar primeira mensagem para cada sessão
+    // Implementar um polling específico para a última sessão criada
+    useEffect(() => {
+        // Limpar polling existente
+        if (newSessionPollingRef.current) {
+            clearInterval(newSessionPollingRef.current);
+            newSessionPollingRef.current = null;
+        }
+
+        // Se tivermos uma nova sessão e o lastMessageTimestamp mudar (indicando atividade)
+        if (lastCreatedSessionId.current && lastMessageTimestamp > 0) {
+            console.log('Iniciando polling específico para nova sessão:', lastCreatedSessionId.current);
+
+            // Função para carregar apenas a sessão específica
+            const loadNewSessionInfo = async () => {
+                if (!lastCreatedSessionId.current) return;
+
+                const sessionId = lastCreatedSessionId.current;
+                const trimmedSessionId = sessionId.trim();
+
+                try {
+                    console.log('Verificando atualização de título para sessão nova:', trimmedSessionId);
+
+                    // Buscar mensagens para esta sessão específica
+                    const { data, error } = await supabase
+                        .from('n8n_chat_histories')
+                        .select('message')
+                        .or(`session_id.eq.${trimmedSessionId},session_id.eq. ${trimmedSessionId}`)
+                        .order('id');
+
+                    if (error) {
+                        console.error('Erro ao buscar mensagens:', error);
+                        return;
+                    }
+
+                    if (!data || data.length === 0) {
+                        console.log('Nenhuma mensagem encontrada ainda para a nova sessão');
+                        return;
+                    }
+
+                    // Filtrar mensagens humanas
+                    const humanMessages = data.filter(item => {
+                        try {
+                            return item &&
+                                item.message &&
+                                typeof item.message === 'object' &&
+                                item.message.type === 'human' &&
+                                typeof item.message.content === 'string';
+                        } catch {
+                            return false;
+                        }
+                    });
+
+                    if (humanMessages.length === 0) {
+                        console.log('Nenhuma mensagem humana encontrada ainda');
+                        return;
+                    }
+
+                    // Obter primeira mensagem humana
+                    const content = humanMessages[0].message.content;
+                    const firstMessage = content.length > 30
+                        ? content.substring(0, 30) + '...'
+                        : content;
+
+                    console.log('Primeira mensagem para a nova sessão:', firstMessage);
+
+                    // Verificar se a mensagem é diferente da atual
+                    const currentInfo = sessionInfos.get(trimmedSessionId);
+                    const currentMessage = currentInfo?.firstMessage || 'Nova conversa';
+
+                    if (currentMessage === 'Nova conversa' && firstMessage !== 'Nova conversa') {
+                        console.log('Atualizando título da nova sessão:', firstMessage);
+
+                        // Atualizar o sessionInfos
+                        const updatedInfos = new Map(sessionInfos);
+                        updatedInfos.set(trimmedSessionId, {
+                            id: trimmedSessionId,
+                            firstMessage,
+                            isNew: true // Mostrar efeito de digitação
+                        });
+
+                        setSessionInfos(updatedInfos);
+
+                        // Parar o polling depois de encontrar o título
+                        if (newSessionPollingRef.current) {
+                            clearInterval(newSessionPollingRef.current);
+                            newSessionPollingRef.current = null;
+                        }
+                    }
+                } catch (err) {
+                    console.error('Erro ao buscar título da nova sessão:', err);
+                }
+            };
+
+            // Verificar imediatamente
+            loadNewSessionInfo();
+
+            // Iniciar polling para esta sessão específica (a cada 1 segundo)
+            newSessionPollingRef.current = setInterval(loadNewSessionInfo, 1000);
+
+            // Limpar após 30 segundos no máximo
+            setTimeout(() => {
+                if (newSessionPollingRef.current) {
+                    clearInterval(newSessionPollingRef.current);
+                    newSessionPollingRef.current = null;
+                    console.log('Polling específico para nova sessão finalizado (timeout)');
+                }
+            }, 30000);
+
+            // Limpar polling se o componente desmontar
+            return () => {
+                if (newSessionPollingRef.current) {
+                    clearInterval(newSessionPollingRef.current);
+                    newSessionPollingRef.current = null;
+                }
+            };
+        }
+    }, [lastMessageTimestamp, lastCreatedSessionId.current, sessionInfos]);
+
+    // Efeito para carregar informações das sessões 
     useEffect(() => {
         const loadSessionInfos = async () => {
             if (activeSessions.length === 0) return;
 
             console.log('Carregando informações para sessões:', activeSessions);
-            const newSessionInfos = new Map<string, SessionInfo>();
 
-            // Manter informações existentes para não perder o estado "isNew"
-            const existingInfos = Array.from(sessionInfos.entries());
-            for (const [id, info] of existingInfos) {
-                newSessionInfos.set(id, { ...info });
-            }
+            // Clone o Map para manter estados não alterados
+            const newSessionInfos = new Map<string, SessionInfo>(sessionInfos);
 
-            // Processar sessões em paralelo usando Promise.all para melhorar performance
-            await Promise.all(activeSessions.map(async (sessionId) => {
+            const sessionsToLoad = activeSessions.filter(sessionId => {
+                const trimmedId = sessionId.trim();
+                const existingInfo = sessionInfos.get(trimmedId);
+                const isLastCreated = trimmedId === lastCreatedSessionId.current;
+
+                // Lógica de quando carregar:
+                // 1. Na primeira carga, carregamos todas
+                // 2. Para a última sessão criada, sempre recarregamos (para pegar título atualizado)
+                // 3. Para as demais, só carregamos se não existirem ou forem "Nova conversa"
+                return isInitialLoad.current ||
+                    isLastCreated ||
+                    !existingInfo ||
+                    existingInfo.firstMessage === "Nova conversa";
+            });
+
+            console.log(`Carregando ${sessionsToLoad.length} sessões (inicial: ${isInitialLoad.current})`);
+
+            await Promise.all(sessionsToLoad.map(async (sessionId) => {
                 try {
-                    // Garantir que o ID da sessão esteja sem espaços extras
                     const trimmedSessionId = sessionId.trim();
                     console.log('Carregando info para sessão:', trimmedSessionId);
 
-                    // Buscar apenas mensagens humanas para esta sessão, em ordem
                     const { data, error } = await supabase
                         .from('n8n_chat_histories')
                         .select('message')
@@ -84,12 +269,9 @@ export default function Sidebar({
                         throw error;
                     }
 
-                    console.log(`Encontrados ${data?.length || 0} registros para sessão ${trimmedSessionId}`);
-
                     let firstMessage = 'Nova conversa';
 
                     if (data && data.length > 0) {
-                        // Filtrar mensagens humanas válidas
                         const humanMessages = data.filter(item => {
                             try {
                                 return item &&
@@ -103,33 +285,58 @@ export default function Sidebar({
                         });
 
                         if (humanMessages.length > 0) {
-                            // Pegar a primeira mensagem humana
                             const content = humanMessages[0].message.content;
-
-                            // Truncar se necessário
                             firstMessage = content.length > 30
                                 ? content.substring(0, 30) + '...'
                                 : content;
-
-                            console.log(`Primeira mensagem para ${trimmedSessionId}:`, firstMessage);
                         }
                     }
 
-                    // Verificar se já temos info para esta sessão
                     const existingInfo = sessionInfos.get(trimmedSessionId);
-                    const isNewSession = !existingInfo; // É nova se não existia antes
-                    const messageChanged = existingInfo && existingInfo.firstMessage !== firstMessage &&
-                        firstMessage !== 'Nova conversa'; // Mensagem mudou e não é o padrão
+                    const hasContent = firstMessage !== 'Nova conversa';
+                    const isLastCreated = trimmedSessionId === lastCreatedSessionId.current;
+                    const hasShownAnimation = animationShownSessions.current.has(trimmedSessionId);
 
+                    // Lógica de quando mostrar animação:
+                    let shouldAnimate = false;
+
+                    if (isLastCreated && hasContent) {
+                        // Para a última sessão criada, sempre animar quando tiver conteúdo
+                        const currentMessage = existingInfo?.firstMessage || '';
+                        shouldAnimate = currentMessage !== firstMessage;
+                    } else if (isInitialLoad.current || isFirstPageLoadRef.current) {
+                        // Na carga inicial da app OU primeiro carregamento da página, animar se tem conteúdo
+                        shouldAnimate = hasContent;
+                    } else if (existingInfo) {
+                        // Para sessões existentes, animar apenas se mudou de "Nova conversa" para conteúdo real
+                        // E não tiver mostrado animação antes
+                        shouldAnimate = hasContent &&
+                            existingInfo.firstMessage === 'Nova conversa' &&
+                            !hasShownAnimation;
+                    }
+
+                    // Atualizar as informações da sessão
                     newSessionInfos.set(trimmedSessionId, {
                         id: trimmedSessionId,
                         firstMessage,
-                        // Marcar como nova se não existia antes ou se a mensagem mudou
-                        isNew: isNewSession || messageChanged
+                        isNew: shouldAnimate
                     });
+
+                    // Se esta é a sessão ativa, nunca mostrar animação
+                    if (trimmedSessionId === currentSessionId && !isNewConversation) {
+                        const info = newSessionInfos.get(trimmedSessionId);
+                        if (info && info.isNew) {
+                            newSessionInfos.set(trimmedSessionId, {
+                                ...info,
+                                isNew: false
+                            });
+
+                            // Marcar como já tendo mostrado
+                            markAnimationShown(trimmedSessionId);
+                        }
+                    }
                 } catch (err) {
                     console.error('Erro ao processar sessão:', err);
-                    // Usar nome padrão em caso de erro
                     const trimmedId = sessionId.trim();
                     newSessionInfos.set(trimmedId, {
                         id: trimmedId,
@@ -139,29 +346,75 @@ export default function Sidebar({
                 }
             }));
 
-            // Atualizar estado com todas as informações das sessões
+            // Atualizar estado
             setSessionInfos(newSessionInfos);
+
+            // Após a primeira carga, desativar a flag
+            if (isInitialLoad.current) {
+                isInitialLoad.current = false;
+            }
         };
 
         loadSessionInfos();
-    }, [activeSessions, lastMessageTimestamp]); // Adicionamos lastMessageTimestamp para forçar recarregamento
+    }, [activeSessions, lastMessageTimestamp, currentSessionId, isNewConversation]);
 
     const handleNewSession = async () => {
-        if (creating || isCreatingSession) return; // Evitar múltiplos cliques
+        if (creating || isCreatingSession) return;
 
         setCreating(true);
         try {
             console.log("Iniciando criação de nova sessão...");
-            await onNewSession();
+            const newSessionId = await onNewSession();
+
+            if (newSessionId) {
+                // Registrar a nova sessão
+                lastCreatedSessionId.current = newSessionId;
+                console.log("Nova sessão criada, ID registrado:", newSessionId);
+
+                // Adicionar entrada inicial ao sessionInfos
+                const trimmedId = newSessionId.trim();
+                const updatedInfos = new Map(sessionInfos);
+                updatedInfos.set(trimmedId, {
+                    id: trimmedId,
+                    firstMessage: 'Nova conversa',
+                    isNew: false // Não mostrar animação até ter conteúdo real
+                });
+                setSessionInfos(updatedInfos);
+            }
         } catch (error) {
             console.error("Erro ao criar nova sessão:", error);
         }
     };
 
-    // Função para verificar se todas as sessões têm o mesmo ID
+    // MODIFICADO: handleSelectSession mais simples sem delays condicionais
+    const handleSelectSession = (sessionId: string) => {
+        if (creating) return;
+
+        const trimmedId = sessionId.trim();
+        console.log('Selecionando sessão:', trimmedId);
+
+        // IMPORTANTE: Sempre desativar a flag de primeira carga quando o usuário interage
+        isFirstPageLoadRef.current = false;
+
+        // Desativar a animação nesta sessão e marcá-la como já mostrada
+        const updatedInfos = new Map(sessionInfos);
+
+        // Desativar animações para TODAS as sessões para evitar re-animações
+        for (const [id, sessionInfo] of updatedInfos.entries()) {
+            if (sessionInfo.isNew) {
+                updatedInfos.set(id, { ...sessionInfo, isNew: false });
+                markAnimationShown(id);
+            }
+        }
+
+        setSessionInfos(updatedInfos);
+
+        // Chamar o seletor de sessão imediatamente, sem delay
+        onSessionSelect(trimmedId);
+    };
+
     const hasDuplicateSessions = (): boolean => {
         if (activeSessions.length <= 1) return false;
-
         const uniqueIds = new Set(activeSessions.map(id => id.trim()));
         return uniqueIds.size !== activeSessions.length;
     };
@@ -181,16 +434,12 @@ export default function Sidebar({
         transition: 'transform 0.3s ease-in-out, background-color 0.3s'
     };
 
-    // Em telas maiores, não esconder a sidebar
     if (typeof window !== 'undefined' && window.innerWidth >= 768) {
         sidebarStyle.position = 'relative';
         sidebarStyle.transform = 'translateX(0)';
     }
 
-    // Remover sessões duplicadas (com espaços extras)
     const uniqueSessions = Array.from(new Set(activeSessions.map(id => id.trim())));
-
-    console.log('Sessões únicas exibidas na sidebar:', uniqueSessions);
 
     return (
         <div style={sidebarStyle}>
@@ -287,7 +536,6 @@ export default function Sidebar({
                 </button>
             </div>
 
-            {/* Aviso caso todas as sessões tenham o mesmo ID */}
             {hasDuplicateSessions() && (
                 <div style={{
                     padding: '12px 16px',
@@ -344,16 +592,14 @@ export default function Sidebar({
                         flexDirection: 'column',
                         gap: '6px'
                     }}>
-                        {/* Garantir que as sessões permaneçam na ordem original (mais recentes primeiro) */}
-                        {uniqueSessions.map((session, index) => {
+                        {uniqueSessions.map((session) => {
                             const trimmedSession = session.trim();
-                            // Consideramos uma sessão ativa se o ID corresponder E não estamos em uma nova conversa
                             const isActive = currentSessionId.trim() === trimmedSession && !isNewConversation;
 
                             return (
                                 <li key={trimmedSession}>
                                     <button
-                                        onClick={() => !creating && onSessionSelect(trimmedSession)}
+                                        onClick={() => handleSelectSession(trimmedSession)}
                                         style={{
                                             width: '100%',
                                             textAlign: 'left',
@@ -401,12 +647,15 @@ export default function Sidebar({
                                                     text={sessionInfos.get(trimmedSession)!.firstMessage}
                                                     typingSpeed={15}
                                                     onComplete={() => {
-                                                        // Remover a flag isNew após completar a animação
+                                                        // Remover flag isNew e marcar como já mostrada
                                                         const updatedInfos = new Map(sessionInfos);
                                                         const info = updatedInfos.get(trimmedSession);
                                                         if (info) {
                                                             updatedInfos.set(trimmedSession, { ...info, isNew: false });
                                                             setSessionInfos(updatedInfos);
+
+                                                            // Marcar como já mostrada
+                                                            markAnimationShown(trimmedSession);
                                                         }
                                                     }}
                                                 />

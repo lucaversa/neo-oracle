@@ -75,7 +75,7 @@ export default function ChatInput({
                             style={{
                                 width: '100%',
                                 padding: '14px 16px',
-                                paddingRight: '50px',
+                                paddingRight: '60px', /* Aumentado para dar mais espaço ao botão */
                                 backgroundColor: inputDisabled ? 'var(--background-subtle)' : 'var(--background-main)',
                                 borderRadius: '16px',
                                 border: '1px solid var(--border-color)',
@@ -98,9 +98,11 @@ export default function ChatInput({
                             disabled={inputDisabled || !message.trim()}
                             style={{
                                 position: 'absolute',
-                                right: '10px',
-                                bottom: '10px',
-                                padding: '8px',
+                                right: '16px',
+                                top: '50%',
+                                width: '36px',
+                                height: '36px',
+                                padding: '0',
                                 borderRadius: '50%',
                                 backgroundColor: '#4f46e5',
                                 color: 'white',
@@ -111,7 +113,9 @@ export default function ChatInput({
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
-                                transform: (inputDisabled || !message.trim()) ? 'scale(0.95)' : 'scale(1)',
+                                transform: (inputDisabled || !message.trim())
+                                    ? 'translateY(-50%) scale(0.95)'
+                                    : 'translateY(-50%) scale(1)',
                                 boxShadow: 'var(--shadow-sm)'
                             }}
                         >

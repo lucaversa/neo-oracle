@@ -1,7 +1,8 @@
 // src/components/chat/ChatBubble.tsx
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { ChatMessage } from '@/types/chat';
 import { useTheme } from '@/context/ThemeContext';
+import ThinkingIndicator from './ThinkingIndicator';
 
 interface ChatBubbleProps {
     message: ChatMessage;
@@ -20,10 +21,19 @@ export default function ChatBubble({
     const initial = userName ? userName.charAt(0).toUpperCase() : 'U';
     const { isDarkMode } = useTheme();
     const [copied, setCopied] = useState(false);
+    // Estado adicional para controlar quando a bolha está visível
+    const [isVisible, setIsVisible] = useState(true);
+
+    // Garantir que a bolha permanece visível durante o streaming
+    useEffect(() => {
+        if (isStreaming) {
+            setIsVisible(true);
+        }
+    }, [isStreaming]);
 
     // Display content based on streaming
     const displayContent = isStreaming && message.type === 'ai'
-        ? streamingContent
+        ? streamingContent || ''  // Não mostrar texto padrão, pois usaremos o ThinkingIndicator
         : message.content;
 
     // Função para copiar
@@ -41,6 +51,9 @@ export default function ChatBubble({
                 console.error('Erro ao copiar: ', err);
             });
     };
+
+    // Se o componente não estiver visível, não renderizar nada
+    if (!isVisible) return null;
 
     return (
         <div style={{
@@ -82,17 +95,20 @@ export default function ChatBubble({
                 {/* Bolha de mensagem */}
                 <div style={{
                     borderRadius: '18px',
-                    padding: '12px 16px',
-                    backgroundColor: isUser
-                        ? '#4f46e5'
-                        : (isDarkMode ? 'var(--background-subtle)' : 'var(--background-subtle)'),
+                    padding: isStreaming && !isUser ? '0' : '12px 16px', // Removemos o padding quando for ThinkingIndicator
                     color: isUser
                         ? 'white'
                         : 'var(--text-primary)',
                     boxShadow: 'var(--shadow-sm)',
                     position: 'relative',
                     borderBottomLeftRadius: !isUser ? '4px' : undefined,
-                    borderBottomRightRadius: isUser ? '4px' : undefined
+                    borderBottomRightRadius: isUser ? '4px' : undefined,
+                    // Definir backgroundColor apenas uma vez com toda a lógica
+                    backgroundColor: isStreaming && !isUser
+                        ? 'transparent'
+                        : (isUser
+                            ? '#4f46e5'
+                            : (isDarkMode ? 'var(--background-subtle)' : 'var(--background-subtle)'))
                 }}>
                     <div style={{
                         whiteSpace: 'pre-wrap',
@@ -100,17 +116,15 @@ export default function ChatBubble({
                         fontSize: '15px',
                         lineHeight: '1.5'
                     }}>
-                        {displayContent}
-                        {isStreaming && !isUser && (
-                            <span style={{
-                                display: 'inline-block',
-                                width: '6px',
-                                height: '14px',
-                                backgroundColor: 'currentColor',
-                                marginLeft: '4px',
-                                verticalAlign: 'middle',
-                                animation: 'blink 1s infinite'
-                            }} />
+                        {/* Se estiver em streaming e for mensagem do AI, mostrar o ThinkingIndicator */}
+                        {isStreaming && !isUser ? (
+                            <ThinkingIndicator
+                                variant="pulse"
+                                customText="Oráculo está pensando"
+                            />
+                        ) : (
+                            // Caso contrário, mostrar o conteúdo normal
+                            displayContent
                         )}
                     </div>
                 </div>

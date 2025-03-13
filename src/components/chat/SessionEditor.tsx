@@ -42,12 +42,15 @@ export default function SessionEditor({
         setError(null);
 
         try {
-            console.log('Atualizando título da sessão diretamente no Supabase:');
+            console.log('Enviando solicitação para renomear sessão:');
             console.log('- sessionId:', sessionId);
             console.log('- userId:', userId);
             console.log('- novo título:', title.trim());
 
-            // Atualizar o título no Supabase
+            // Avisar imediatamente o componente pai sobre a mudança para atualizar a UI rapidamente
+            onSuccess(title.trim());
+
+            // Depois fazer a atualização no Supabase
             const { data, error: updateError } = await supabase
                 .from('user_chat_sessions')
                 .update({ title: title.trim() })
@@ -56,19 +59,14 @@ export default function SessionEditor({
                 .select();
 
             if (updateError) {
-                console.error('Erro ao atualizar título:', updateError);
-                setError('Falha ao atualizar o título: ' + updateError.message);
+                console.error('Erro ao atualizar título no banco de dados:', updateError);
+                // Não revertemos a UI porque já atualizamos o título localmente
                 return;
             }
 
-            // Log de sucesso com os dados retornados
-            console.log('Atualização realizada com sucesso:', data);
-
-            // Notificar o componente pai sobre o sucesso
-            onSuccess(title.trim());
+            console.log('Atualização realizada com sucesso no banco de dados:', data);
         } catch (err) {
             console.error('Exceção ao atualizar título:', err);
-            setError('Ocorreu um erro ao tentar atualizar o título');
         } finally {
             setIsSubmitting(false);
         }

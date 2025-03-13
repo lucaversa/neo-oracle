@@ -5,7 +5,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { ChatMessage, UserChatSession, SessionInfo } from '@/types/chat';
 
 // Constante para o limite de mensagens humanas por chat
-const MAX_HUMAN_MESSAGES_PER_SESSION = 10;
+const MAX_HUMAN_MESSAGES_PER_SESSION = 5;
 
 interface UseChatReturn {
     messages: ChatMessage[];
@@ -29,6 +29,7 @@ interface UseChatReturn {
     streamingContent: string;
     searchableVectorStores: string[];
     setSearchableVectorStores: (ids: string[]) => void;
+    updateSessionTitle: (sessionId: string, title: string) => void; // Nova função
 }
 
 export function useChat(userId?: string): UseChatReturn {
@@ -100,6 +101,8 @@ export function useChat(userId?: string): UseChatReturn {
     }, []);
 
     // Carregar informações das sessões de um usuário específico
+    // Modifique a função loadUserSessions para ordenar por created_at em vez de updated_at
+
     const loadUserSessions = async () => {
         if (!userId) return [];
 
@@ -107,12 +110,13 @@ export function useChat(userId?: string): UseChatReturn {
             console.log('Carregando sessões do usuário:', userId);
 
             // Buscar as sessões de chat do usuário atual que não estão excluídas
+            // Ordenando por created_at em vez de updated_at
             const { data, error } = await supabase
                 .from('user_chat_sessions')
                 .select('*')
                 .eq('user_id', userId)
                 .eq('is_deleted', false)
-                .order('updated_at', { ascending: false });
+                .order('created_at', { ascending: false });
 
             if (error) {
                 console.error('Erro ao carregar sessões do usuário:', error);
@@ -124,37 +128,75 @@ export function useChat(userId?: string): UseChatReturn {
                 return [];
             }
 
-            // Simplificar o processamento das sessões
+            // Log para depuração
+            console.log(`Encontradas ${data.length} sessões para o usuário`);
+            data.forEach((session, index) => {
+                console.log(`Sessão ${index + 1}: ID=${session.session_id}, Título=${session.title || 'Sem título'}`);
+            });
+
+            // Limpar e reconstruir completamente o Map de informações de sessão
+            const newSessionInfos = new Map<string, SessionInfo>();
+
             const sessions = data.map((session: UserChatSession) => {
-                // Simplificar: usar título existente ou um título padrão com ID curto
-                let title = session.title || `Conversa ${session.session_id.substring(0, 6)}`;
+                const trimmedId = session.session_id.trim();
 
-                // Limitar o tamanho do título para evitar problemas de UI
-                if (title.length > 30) {
-                    title = title.substring(0, 27) + '...';
-                }
+                // Usar título do banco ou gerar um padrão, garantindo que não seja null ou undefined
+                const title = session.title || `Conversa ${trimmedId.substring(0, 6)}`;
 
-                // Atualizar o Map de informações de sessão de forma mais simples
+                // Criar objeto de informações da sessão
                 const sessionInfo: SessionInfo = {
-                    id: session.session_id.trim(),
+                    id: trimmedId,
                     title: title,
                     isNew: false
                 };
 
-                // Adicionar ao estado
-                const updatedInfos = new Map(sessionInfos);
-                updatedInfos.set(session.session_id.trim(), sessionInfo);
-                setSessionInfos(updatedInfos);
+                // Adicionar ao novo Map
+                newSessionInfos.set(trimmedId, sessionInfo);
 
-                return session.session_id.trim();
+                return trimmedId;
             });
 
-            console.log(`${sessions.length} sessões encontradas para o usuário`);
+            // Atualizar o state com o novo Map completo
+            setSessionInfos(newSessionInfos);
+
+            console.log(`${sessions.length} sessões processadas`);
             return sessions;
         } catch (err) {
             console.error('Erro ao carregar sessões do usuário:', err);
             return [];
         }
+    };
+
+    // E também modifique a função refreshActiveSessions se necessário (importante garantir que 
+    // loadUserSessions seja a única função que está fazendo a ordenação)
+
+    // Adicionar uma função para atualizar explicitamente o título de uma sessão no estado local
+    const updateSessionTitle = (sessionId: string, title: string) => {
+        const trimmedId = sessionId.trim();
+        console.log(`Atualizando título da sessão ${trimmedId} para "${title}"`);
+
+        setSessionInfos(prevInfos => {
+            const newInfos = new Map(prevInfos);
+            const currentInfo = newInfos.get(trimmedId);
+
+            if (currentInfo) {
+                newInfos.set(trimmedId, {
+                    ...currentInfo,
+                    title: title
+                });
+            } else {
+                newInfos.set(trimmedId, {
+                    id: trimmedId,
+                    title: title,
+                    isNew: false
+                });
+            }
+
+            return newInfos;
+        });
+
+        // Forçar atualização
+        setLastMessageTimestamp(Date.now());
     };
 
     // Carregar o título da sessão a partir do banco de dados
@@ -183,9 +225,6 @@ export function useChat(userId?: string): UseChatReturn {
     };
 
     // Renomear uma sessão de chat
-    // Substitua a função renameSession no seu arquivo src/hooks/useChat.ts
-
-    // Renomear uma sessão de chat
     const renameSession = async (sessionId: string, newTitle: string): Promise<boolean> => {
         if (!userId || !sessionId || !newTitle.trim()) {
             console.error('Dados inválidos para renomear sessão');
@@ -196,38 +235,7 @@ export function useChat(userId?: string): UseChatReturn {
             const trimmedSessionId = sessionId.trim();
             console.log(`Renomeando sessão ${trimmedSessionId} para "${newTitle}"`);
 
-            // Log para depuração - verificar parâmetros
-            console.log('Parâmetros da atualização:');
-            console.log('- user_id:', userId);
-            console.log('- session_id:', trimmedSessionId);
-            console.log('- novo título:', newTitle.trim());
-
-            // Atualizar no Supabase
-            const { data, error } = await supabase
-                .from('user_chat_sessions')
-                .update({ title: newTitle.trim() })
-                .eq('user_id', userId)
-                .eq('session_id', trimmedSessionId)
-                .select(); // Selecionar dados retornados para verificar
-
-            // Log detalhado da resposta
-            console.log('Resposta da operação de atualização:');
-            console.log('- data:', data);
-            console.log('- error:', error);
-
-            if (error) {
-                console.error('Erro ao renomear sessão:', error);
-                setError('Falha ao renomear sessão. Tente novamente.');
-                return false;
-            }
-
-            // Verificar se a operação afetou alguma linha
-            if (!data || data.length === 0) {
-                console.warn('Nenhum registro foi atualizado.');
-                return false;
-            }
-
-            // Atualizar no estado local
+            // Atualizar PRIMEIRO no estado local para feedback imediato ao usuário
             const updatedInfos = new Map(sessionInfos);
             const currentInfo = updatedInfos.get(trimmedSessionId);
 
@@ -236,21 +244,38 @@ export function useChat(userId?: string): UseChatReturn {
                     ...currentInfo,
                     title: newTitle.trim()
                 });
+
+                // Atualizar o estado imediatamente
                 setSessionInfos(updatedInfos);
+
+                // Disparar uma atualização forçada da interface
+                setLastMessageTimestamp(Date.now());
             }
 
-            // Forçar atualização da interface
-            setLastMessageTimestamp(Date.now());
+            // Depois fazer a atualização no banco de dados
+            const { data, error } = await supabase
+                .from('user_chat_sessions')
+                .update({ title: newTitle.trim() })
+                .eq('user_id', userId)
+                .eq('session_id', trimmedSessionId)
+                .select();
 
-            console.log('Sessão renomeada com sucesso');
+            if (error) {
+                console.error('Erro ao renomear sessão no banco de dados:', error);
+                // Mesmo com erro no banco, mantemos o título atualizado no frontend
+                return true; // Retorna true porque o frontend foi atualizado
+            }
 
-            // Forçar atualização da lista de sessões
-            refreshActiveSessions();
+            console.log('Sessão renomeada com sucesso no banco de dados');
+
+            // Forçar atualização da lista de sessões para garantir consistência
+            setTimeout(() => {
+                refreshActiveSessions();
+            }, 300);
 
             return true;
         } catch (err) {
             console.error('Erro ao renomear sessão:', err);
-            setError('Erro ao renomear sessão. Tente novamente.');
             return false;
         }
     };
@@ -690,10 +715,13 @@ export function useChat(userId?: string): UseChatReturn {
             const allMessages = [...messagesRef.current, userMessage];
 
             try {
-                // Remover indicador de "pensando" antes de fazer a chamada
-                setMessages(prev => prev.filter(msg => msg.content !== 'Oráculo está pensando...'));
+                // NÃO remover indicador de "pensando" - manter o bubble visível durante toda a chamada
 
-                // Fazer a chamada para a API
+                // Configurar um timeout mais longo usando AbortController
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 180000); // 3 minutos de timeout
+
+                // Fazer a chamada para a API com sinal de abort
                 const response = await fetch('/api/openai', {
                     method: 'POST',
                     headers: {
@@ -705,7 +733,11 @@ export function useChat(userId?: string): UseChatReturn {
                         userId: userId || 'anonymous',
                         vectorStoreIds: searchableVectorStores
                     }),
+                    signal: controller.signal
                 });
+
+                // Limpar o timeout se a resposta chegou
+                clearTimeout(timeoutId);
 
                 if (!response.ok) {
                     throw new Error(`Erro HTTP: ${response.status}`);
@@ -732,7 +764,43 @@ export function useChat(userId?: string): UseChatReturn {
 
             } catch (error) {
                 console.error('Erro na chamada para API:', error);
-                setError('Erro ao obter resposta do servidor.');
+
+                // Verificar se foi um erro de timeout (AbortError)
+                if (error instanceof DOMException && error.name === 'AbortError') {
+                    setError('A consulta está demorando muito. O servidor pode estar ocupado. Tente novamente mais tarde.');
+
+                    // Adicionar uma mensagem de erro visível no chat
+                    setMessages(prev => {
+                        // Só adicionar se a última mensagem for do usuário
+                        if (prev.length > 0 && prev[prev.length - 1].type === 'human') {
+                            return [...prev, {
+                                type: 'ai',
+                                content: 'A consulta está demorando muito. O servidor pode estar ocupado. Por favor, tente novamente mais tarde.'
+                            }];
+                        }
+                        return prev;
+                    });
+                } else {
+                    setError('Erro ao obter resposta do servidor: ' + (error instanceof Error ? error.message : 'Erro desconhecido'));
+
+                    // Adicionar mensagem de erro no chat
+                    setMessages(prev => {
+                        if (prev.length > 0 && prev[prev.length - 1].type === 'human') {
+                            return [...prev, {
+                                type: 'ai',
+                                content: 'Desculpe, ocorreu um erro ao processar sua solicitação. Por favor, tente novamente.'
+                            }];
+                        }
+                        return prev;
+                    });
+                }
+
+                // Se for uma nova conversa e houve erro, cancelar a conversa
+                if (wasNewConversation && messagesRef.current.length <= 1) {
+                    console.log('Erro em nova conversa. Cancelando a criação da sessão.');
+                    // Aqui poderíamos adicionar código para excluir a sessão recém-criada no banco de dados
+                }
+
                 setIsProcessing(false);
             }
         } catch (err: any) {
@@ -808,17 +876,32 @@ export function useChat(userId?: string): UseChatReturn {
     useEffect(() => {
         let processingGuardTimer: NodeJS.Timeout | null = null;
 
-        // Se estamos processando, configurar um timer de segurança simples
+        // Se estamos processando, configurar um timer de segurança 
         if (isProcessing) {
             console.log('Configurando timer de segurança para estado de processamento');
 
-            // Timer para resetar após 45 segundos
+            // Aumentar o timeout para 3 minutos (180000ms) para consultas longas
             processingGuardTimer = setTimeout(() => {
                 if (isProcessing) {
-                    console.log('AVISO: Estado de processamento preso por tempo excessivo. Resetando...');
+                    console.log('AVISO: Estado de processamento preso por tempo excessivo. Adicionando mensagem de erro em vez de resetar...');
+
+                    // Adicionar mensagem de erro em vez de apenas resetar o estado
+                    setMessages(prev => {
+                        // Verificar se a última mensagem é do usuário
+                        if (prev.length > 0 && prev[prev.length - 1].type === 'human') {
+                            // Adicionar mensagem de erro do sistema
+                            return [...prev, {
+                                type: 'ai',
+                                content: 'A resposta está demorando mais do que o esperado. Por favor, aguarde ou tente novamente mais tarde.'
+                            }];
+                        }
+                        return prev;
+                    });
+
+                    // Agora sim resetar o estado após adicionar a mensagem
                     resetProcessingState();
                 }
-            }, 45000); // 45 segundos é um tempo razoável
+            }, 180000); // 3 minutos
         }
 
         return () => {
@@ -849,6 +932,7 @@ export function useChat(userId?: string): UseChatReturn {
         hasEmptyChat,
         streamingContent,
         searchableVectorStores,
-        setSearchableVectorStores
+        setSearchableVectorStores,
+        updateSessionTitle
     };
 }

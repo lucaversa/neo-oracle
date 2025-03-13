@@ -21,6 +21,7 @@ export default function ChatPage() {
     const creatingSessionRef = useRef<boolean>(false);
     const [isCreatingNewSession, setIsCreatingNewSession] = useState(false);
     const [manualSessionChange, setManualSessionChange] = useState<boolean>(false);
+    const [localError, setLocalError] = useState<string | null>(null); // Estado local para erros
 
     // Proteger a rota - redirecionar se não estiver autenticado
     useEffect(() => {
@@ -56,12 +57,16 @@ export default function ChatPage() {
 
     // Rolar para o final da conversa quando novas mensagens chegarem ou ao receber conteúdo streaming
     useEffect(() => {
-        if (chatContainerRef.current && (messages.length > 0 || streamingContent)) {
-            const container = chatContainerRef.current;
-            // Usar setTimeout para garantir que o DOM foi atualizado antes de rolar
-            setTimeout(() => {
-                container.scrollTop = container.scrollHeight;
-            }, 100);
+        if (chatContainerRef.current) {
+            if (messages.length > 0 || streamingContent) {
+                const container = chatContainerRef.current;
+                // Usar um timeout mais longo para garantir que o DOM foi atualizado
+                setTimeout(() => {
+                    if (container) {
+                        container.scrollTop = container.scrollHeight;
+                    }
+                }, 200); // Aumentar para 200ms para dar mais tempo
+            }
         }
     }, [messages, streamingContent]);
 
@@ -110,6 +115,13 @@ export default function ChatPage() {
     const handleNewSession = async () => {
         // Evitar duplicação
         if (creatingSessionRef.current || isCreatingNewSession) return null;
+
+        // Não permitir criar nova sessão se estiver processando uma resposta
+        if (isProcessing) {
+            console.log("Processando uma resposta. Não é possível criar nova sessão agora.");
+            setLocalError("Aguarde a resposta atual antes de criar uma nova conversa");
+            return null;
+        }
 
         // MODIFICADO: Se já temos uma conversa vazia, usar essa ao invés de criar nova
         if (hasEmptyChat && isNewConversation) {
@@ -180,7 +192,23 @@ export default function ChatPage() {
 
     // Função para renomear uma sessão de chat
     const handleRenameSession = async (sessionId: string, newTitle: string) => {
-        return await renameSession(sessionId, newTitle);
+        // Não tentamos mais modificar o estado local diretamente
+        // Apenas delegamos para a função do hook
+        try {
+            // Chamar diretamente a função do hook
+            const success = await renameSession(sessionId, newTitle);
+
+            if (!success) {
+                // Caso queira exibir alguma mensagem de erro
+                setLocalError && setLocalError("Falha ao renomear a sessão. Tente novamente.");
+            }
+
+            return success;
+        } catch (error) {
+            console.error("Erro ao renomear sessão:", error);
+            setLocalError && setLocalError("Erro ao renomear sessão: " + String(error));
+            return false;
+        }
     };
 
     // Função para excluir uma sessão de chat
@@ -279,6 +307,7 @@ export default function ChatPage() {
                 isCreatingSession={isCreatingNewSession}
                 isNewConversation={isNewConversation}
                 lastMessageTimestamp={lastMessageTimestamp}
+                isProcessing={isProcessing} // Nova prop passada para o Sidebar
             />
 
             {/* Main content */}
@@ -377,7 +406,7 @@ export default function ChatPage() {
                                     gap: '8px',
                                     paddingBottom: '24px' // Espaço para o indicador "pensando"
                                 }}>
-                                    {error && error !== 'Selecione uma conversa existente ou crie uma nova.' && (
+                                    {(error || localError) && (error || localError) !== 'Selecione uma conversa existente ou crie uma nova.' && (
                                         <div style={{
                                             backgroundColor: 'rgba(239, 68, 68, 0.1)',
                                             borderLeft: '4px solid var(--error-color)',
@@ -386,7 +415,7 @@ export default function ChatPage() {
                                             marginBottom: '16px',
                                             borderRadius: '4px'
                                         }}>
-                                            <p>{error}</p>
+                                            <p>{error || localError}</p>
                                             {sessionLimitReached && (
                                                 <button
                                                     onClick={handleNewSession}
@@ -477,11 +506,11 @@ export default function ChatPage() {
                                             {/* Adicionar mensagem de streaming quando necessário - quando usuário enviou mensagem e estamos aguardando resposta */}
                                             {isProcessing && messages.length > 0 && messages[messages.length - 1].type === 'human' && (
                                                 <ChatBubble
-                                                    key={`${sessionId}-streaming`}
+                                                    key={`${sessionId}-streaming-${Date.now()}`} // Chave única para evitar problemas de cache
                                                     message={{ type: 'ai', content: '' }}
                                                     userName={userName}
                                                     isStreaming={true}
-                                                    streamingContent={streamingContent}
+                                                    streamingContent={streamingContent || 'Oráculo está pensando...'}
                                                 />
                                             )}
                                         </>

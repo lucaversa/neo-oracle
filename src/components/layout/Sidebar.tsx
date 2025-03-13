@@ -1,3 +1,4 @@
+// src/components/layout/Sidebar.tsx
 import { useState, useEffect } from 'react';
 import { useTheme } from '@/context/ThemeContext';
 import { SessionInfo } from '@/types/chat';
@@ -17,6 +18,7 @@ interface SidebarProps {
     isCreatingSession?: boolean;
     isNewConversation?: boolean;
     lastMessageTimestamp?: number;
+    isProcessing?: boolean; // Nova prop para controlar estado de processamento
 }
 
 export default function Sidebar({
@@ -32,7 +34,8 @@ export default function Sidebar({
     userId,
     isCreatingSession = false,
     isNewConversation = false,
-    lastMessageTimestamp = 0
+    lastMessageTimestamp = 0,
+    isProcessing = false // Valor padrão
 }: SidebarProps) {
     const [creating, setCreating] = useState(false);
     const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
@@ -67,9 +70,9 @@ export default function Sidebar({
     }, [activeSessions, currentSessionId, displayLimit, isNewConversation, lastMessageTimestamp]);
 
     const handleNewSession = async () => {
-        // Não criar nova sessão se já estiver criando ou se já há uma conversa nova
-        if (creating || isCreatingSession || isNewConversation) {
-            console.log("Já existe uma conversa nova ou está criando. Ignorando.");
+        // Não criar nova sessão se já estiver criando ou se já há uma conversa nova ou se estiver processando
+        if (creating || isCreatingSession || isNewConversation || isProcessing) {
+            console.log("Já existe uma conversa nova, está criando ou processando. Ignorando.");
             return;
         }
 
@@ -88,7 +91,7 @@ export default function Sidebar({
     };
 
     const handleSelectSession = (sessionId: string) => {
-        if (creating) return;
+        if (creating || isProcessing) return;
 
         // Cancelar qualquer edição em andamento
         setEditingSessionId(null);
@@ -112,19 +115,6 @@ export default function Sidebar({
     // Função para lidar com sucesso na edição
     const handleEditSuccess = (sessionId: string, newTitle: string) => {
         console.log(`Título atualizado com sucesso para "${newTitle}"`);
-
-        // Atualizar o estado local mesmo que onRenameSession não funcione corretamente
-        const updatedInfos = new Map(sessionInfos);
-        const sessionInfo = updatedInfos.get(sessionId);
-
-        if (sessionInfo) {
-            updatedInfos.set(sessionId, {
-                ...sessionInfo,
-                title: newTitle
-            });
-            // Este é apenas o estado local, isso não fará uma atualização no banco
-            // mas pelo menos a UI será atualizada
-        }
 
         // Tenta chamar a função onRenameSession dos props
         onRenameSession(sessionId, newTitle)
@@ -228,7 +218,7 @@ export default function Sidebar({
             <div style={{ padding: '16px' }}>
                 <button
                     onClick={handleNewSession}
-                    disabled={creating || isCreatingSession || isNewConversation}
+                    disabled={creating || isCreatingSession || isNewConversation || isProcessing}
                     style={{
                         width: '100%',
                         display: 'flex',
@@ -240,8 +230,8 @@ export default function Sidebar({
                         border: 'none',
                         borderRadius: '8px',
                         fontWeight: '500',
-                        cursor: (creating || isCreatingSession || isNewConversation) ? 'not-allowed' : 'pointer',
-                        opacity: (creating || isCreatingSession || isNewConversation) ? 0.7 : 1,
+                        cursor: (creating || isCreatingSession || isNewConversation || isProcessing) ? 'not-allowed' : 'pointer',
+                        opacity: (creating || isCreatingSession || isNewConversation || isProcessing) ? 0.7 : 1,
                         transition: 'background-color 0.2s',
                         boxShadow: 'var(--shadow-sm)'
                     }}
@@ -263,6 +253,24 @@ export default function Sidebar({
                                 <path style={{ opacity: 0.75 }} fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                             </svg>
                             Criando...
+                        </span>
+                    ) : isProcessing ? (
+                        <span style={{ display: 'flex', alignItems: 'center' }}>
+                            <svg
+                                style={{
+                                    width: '16px',
+                                    height: '16px',
+                                    marginRight: '8px',
+                                    animation: 'spin 1s linear infinite'
+                                }}
+                                xmlns="http://www.w3.org/2000/svg"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                            >
+                                <circle style={{ opacity: 0.25 }} cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                <path style={{ opacity: 0.75 }} fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            Aguarde...
                         </span>
                     ) : (
                         <>
@@ -435,7 +443,7 @@ export default function Sidebar({
                                                         ? 'var(--text-primary)'
                                                         : 'var(--text-secondary)',
                                                     border: 'none',
-                                                    cursor: creating ? 'not-allowed' : 'pointer',
+                                                    cursor: creating || isProcessing ? 'not-allowed' : 'pointer',
                                                     fontWeight: isActive ? '500' : 'normal',
                                                     overflow: 'hidden',
                                                     textOverflow: 'ellipsis',
@@ -443,7 +451,7 @@ export default function Sidebar({
                                                     display: 'flex',
                                                     alignItems: 'center',
                                                     gap: '8px',
-                                                    opacity: creating ? 0.6 : 1
+                                                    opacity: creating || isProcessing ? 0.6 : 1
                                                 }}
                                             >
                                                 <svg

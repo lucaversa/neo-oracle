@@ -5,7 +5,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { ChatMessage, UserChatSession, SessionInfo } from '@/types/chat';
 
 // Constante para o limite de mensagens humanas por chat
-const MAX_HUMAN_MESSAGES_PER_SESSION = 20;
+const MAX_HUMAN_MESSAGES_PER_SESSION = 10;
 
 interface UseChatReturn {
     messages: ChatMessage[];
@@ -183,6 +183,9 @@ export function useChat(userId?: string): UseChatReturn {
     };
 
     // Renomear uma sessão de chat
+    // Substitua a função renameSession no seu arquivo src/hooks/useChat.ts
+
+    // Renomear uma sessão de chat
     const renameSession = async (sessionId: string, newTitle: string): Promise<boolean> => {
         if (!userId || !sessionId || !newTitle.trim()) {
             console.error('Dados inválidos para renomear sessão');
@@ -193,16 +196,34 @@ export function useChat(userId?: string): UseChatReturn {
             const trimmedSessionId = sessionId.trim();
             console.log(`Renomeando sessão ${trimmedSessionId} para "${newTitle}"`);
 
+            // Log para depuração - verificar parâmetros
+            console.log('Parâmetros da atualização:');
+            console.log('- user_id:', userId);
+            console.log('- session_id:', trimmedSessionId);
+            console.log('- novo título:', newTitle.trim());
+
             // Atualizar no Supabase
-            const { error } = await supabase
+            const { data, error } = await supabase
                 .from('user_chat_sessions')
                 .update({ title: newTitle.trim() })
                 .eq('user_id', userId)
-                .eq('session_id', trimmedSessionId);
+                .eq('session_id', trimmedSessionId)
+                .select(); // Selecionar dados retornados para verificar
+
+            // Log detalhado da resposta
+            console.log('Resposta da operação de atualização:');
+            console.log('- data:', data);
+            console.log('- error:', error);
 
             if (error) {
                 console.error('Erro ao renomear sessão:', error);
                 setError('Falha ao renomear sessão. Tente novamente.');
+                return false;
+            }
+
+            // Verificar se a operação afetou alguma linha
+            if (!data || data.length === 0) {
+                console.warn('Nenhum registro foi atualizado.');
                 return false;
             }
 
@@ -218,8 +239,14 @@ export function useChat(userId?: string): UseChatReturn {
                 setSessionInfos(updatedInfos);
             }
 
-            setLastMessageTimestamp(Date.now()); // Forçar atualização
+            // Forçar atualização da interface
+            setLastMessageTimestamp(Date.now());
+
             console.log('Sessão renomeada com sucesso');
+
+            // Forçar atualização da lista de sessões
+            refreshActiveSessions();
+
             return true;
         } catch (err) {
             console.error('Erro ao renomear sessão:', err);

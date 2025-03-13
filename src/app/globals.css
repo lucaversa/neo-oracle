@@ -503,3 +503,89 @@ a:hover {
     opacity: 0;
   }
 }
+
+/* Adicionar estas animações ao final do arquivo src/app/globals.css */
+
+/* Animação do cursor piscando */
+@keyframes blink {
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0;
+  }
+}
+
+.typing-cursor {
+  animation: blink 1s step-end infinite;
+}
+
+/* Animação fade-in para modais */
+@keyframes modalFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Classes para a paginação da lista de chats */
+.chats-modal {
+  animation: modalFadeIn 0.3s ease-out;
+}
+
+/* Estilização da sessão na lista de chats */
+.session-item {
+  position: relative;
+}
+
+/* Botões de ação na sessão sempre visíveis */
+.session-actions {
+  opacity: 1 !important;
+}
+
+/* Melhora na visualização dos botões de ação */
+.action-button {
+  padding: 6px;
+  background-color: transparent;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-tertiary);
+  transition: color 0.2s, background-color 0.2s;
+}
+
+.action-button:hover {
+  color: var(--text-primary);
+  background-color: var(--background-subtle);
+}
+
+/* Animação para o botão 'Ver mais' */
+@keyframes pulse {
+
+  0%,
+  100% {
+    transform: scale(1);
+  }
+
+  50% {
+    transform: scale(1.05);
+  }
+}
+
+/* Sobrescrever estilos para garantir visibilidade dos botões de renomeação e exclusão */
+.session-item .session-actions {
+  display: flex !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+}

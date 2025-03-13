@@ -18,7 +18,6 @@ export default function ChatPage() {
     const { isDarkMode } = useTheme();
     const router = useRouter();
     const chatContainerRef = useRef<HTMLDivElement>(null);
-    const lastMessageCountRef = useRef<number>(0);
     const creatingSessionRef = useRef<boolean>(false);
     const [isCreatingNewSession, setIsCreatingNewSession] = useState(false);
     const [manualSessionChange, setManualSessionChange] = useState<boolean>(false);
@@ -49,100 +48,41 @@ export default function ChatPage() {
         updateLastMessageTimestamp,
         renameSession,
         deleteSession,
-        hasEmptyChat
+        hasEmptyChat,
+        streamingContent,
+        searchableVectorStores,
+        setSearchableVectorStores
     } = useChat(user?.id);
 
-    // Rolar para o final da conversa quando novas mensagens chegarem
+    // Rolar para o final da conversa quando novas mensagens chegarem ou ao receber conteúdo streaming
     useEffect(() => {
-        if (chatContainerRef.current && messages.length > 0) {
-            // Verificar se há novas mensagens comparando com a contagem anterior
-            if (messages.length > lastMessageCountRef.current) {
-                console.log(`Novas mensagens detectadas: ${messages.length} (anterior: ${lastMessageCountRef.current})`);
-                const container = chatContainerRef.current;
-                // Usar setTimeout para garantir que o DOM foi atualizado antes de rolar
-                setTimeout(() => {
-                    container.scrollTop = container.scrollHeight;
-                    console.log('Rolagem aplicada');
-                }, 100);
-            }
-            // Atualizar a contagem para comparação futura
-            lastMessageCountRef.current = messages.length;
+        if (chatContainerRef.current && (messages.length > 0 || streamingContent)) {
+            const container = chatContainerRef.current;
+            // Usar setTimeout para garantir que o DOM foi atualizado antes de rolar
+            setTimeout(() => {
+                container.scrollTop = container.scrollHeight;
+            }, 100);
         }
-    }, [messages]);
-
-    // NOVO: Effect para garantir carregamento após seleção
-    useEffect(() => {
-        if (manualSessionChange && sessionId && !loading) {
-            const timer = setTimeout(() => {
-                if (messages.length === 0) {
-                    console.log('Sem mensagens após timeout, forçando carregamento');
-                    changeSession(sessionId);
-                }
-            }, 1000);
-
-            return () => clearTimeout(timer);
-        }
-    }, [manualSessionChange, messages.length, sessionId, loading, changeSession]);
-
-    // NOVO: Verificar se precisamos atualizar a UI para primeira mensagem
-    useEffect(() => {
-        // Verificar se precisamos atualizar a UI
-        if (messages.length === 1 && messages[0].type === 'human' && isProcessing) {
-            // Uma única mensagem do usuário com estado de processamento ativo
-            // Configurar uma verificação periódica
-            const checkTimer = setInterval(() => {
-                console.log('Verificando atualizações para primeira mensagem');
-                // Forçar recarregamento da conversa atual
-                if (messages.length === 1 && messages[0].type === 'human' && isProcessing) {
-                    console.log('Ainda aguardando resposta, forçando atualização');
-                    // Use a função fornecida pelo hook
-                    updateLastMessageTimestamp();
-                } else {
-                    clearInterval(checkTimer);
-                }
-            }, 1000);
-
-            return () => clearInterval(checkTimer);
-        }
-    }, [messages, isProcessing, updateLastMessageTimestamp]);
+    }, [messages, streamingContent]);
 
     // Verificar se o estado de processamento está travado por muito tempo
     useEffect(() => {
         let processingTimer: NodeJS.Timeout | null = null;
-        let midCheckTimer: NodeJS.Timeout | null = null;
 
         if (isProcessing) {
-            // Verificação intermediária após 10 segundos
-            midCheckTimer = setTimeout(() => {
-                console.log('Verificação intermediária do estado de processamento...');
-                // Se ainda estamos processando e temos mensagens, verificar se a última é do tipo 'ai'
-                if (isProcessing && messages.length > 0) {
-                    const lastMessage = messages[messages.length - 1];
-                    // Se a última mensagem for do tipo 'ai', mas ainda estamos em processamento, 
-                    // provavelmente o estado ficou preso
-                    if (lastMessage.type === 'ai') {
-                        console.log('Última mensagem é do AI mas estado ainda está processando. Corrigindo...');
-                        resetProcessingState();
-                    }
-                }
-            }, 10000); // 10 segundos
-
-            // Timer principal para resetar após 20 segundos incondicionalmente
+            // Timer principal para resetar após 45 segundos incondicionalmente
             processingTimer = setTimeout(() => {
                 console.log('Estado de processamento ativo por muito tempo, resetando...');
                 resetProcessingState();
-            }, 20000); // 20 segundos
+            }, 45000);
         }
 
         return () => {
-            if (midCheckTimer) {
-                clearTimeout(midCheckTimer);
-            }
             if (processingTimer) {
                 clearTimeout(processingTimer);
             }
         };
-    }, [isProcessing, resetProcessingState, messages]);
+    }, [isProcessing, resetProcessingState]);
 
     // Mostrar um loading state enquanto verifica a autenticação
     if (authLoading) {
@@ -235,12 +175,6 @@ export default function ChatPage() {
         // Reset após um tempo suficiente
         setTimeout(() => {
             setManualSessionChange(false);
-
-            // Verificação adicional para garantir que as mensagens foram carregadas
-            if (messages.length === 0 && !isNewConversation) {
-                console.log('Verificação secundária: forçando recarregamento');
-                changeSession(newSessionId);
-            }
         }, 1500);
     };
 
@@ -281,9 +215,6 @@ export default function ChatPage() {
             resetProcessingState();
         }
 
-        // Verificar se é a primeira mensagem de uma nova conversa
-        const isFirstMessageInNewConversation = isNewConversation && messages.length === 0;
-
         if (sessionLimitReached) {
             // Criar automaticamente uma nova sessão se o limite for atingido
             const newSessionId = await handleNewSession();
@@ -298,42 +229,13 @@ export default function ChatPage() {
                 // Tentar enviar a mensagem
                 await sendMessage(content);
 
-                // NOVO: Verificações específicas para primeira mensagem em nova conversa
-                if (isFirstMessageInNewConversation) {
-                    console.log('Primeira mensagem em nova conversa enviada, verificando estado...');
-
-                    // Forçar atualização da UI
+                // Forçar um scroll para o fim após enviar a mensagem
+                if (chatContainerRef.current) {
                     setTimeout(() => {
-                        // Se a mensagem não está visível, tentar forçar um refresh
-                        if (messages.length === 0 || (messages.length === 1 && messages[0].type === 'human')) {
-                            console.log('Forçando atualização da UI após primeira mensagem');
-                            // Use a função fornecida pelo hook
-                            updateLastMessageTimestamp();
+                        if (chatContainerRef.current) {
+                            chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
                         }
-                    }, 500);
-                }
-
-                // Após o envio bem-sucedido, verificar estado de processamento
-                if (!isProcessing && messages.length > 0 && messages[messages.length - 1].type === 'human') {
-                    console.log('Estado de processamento não aplicado, forçando verificação...');
-
-                    // Tentar carregar as mensagens novamente após um breve intervalo para ver se a resposta chegou
-                    setTimeout(() => {
-                        // Verificar novamente depois de um momento
-                        if (!isProcessing && messages.length > 0 && messages[messages.length - 1].type === 'human') {
-                            console.log('Estado ainda incorreto, tentando corrigir...');
-                            // Se ainda está incorreto, tente uma abordagem mais agressiva
-                            resetProcessingState(); // Limpa estado primeiro
-
-                            // Aguardar um pouco e tentar enviar novamente se necessário
-                            setTimeout(() => {
-                                if (messages.length > 0 && messages[messages.length - 1].type === 'human' && !isProcessing) {
-                                    console.log('Último recurso: tentando reenviar mensagem...');
-                                    sendMessage(content);
-                                }
-                            }, 500);
-                        }
-                    }, 300);
+                    }, 100);
                 }
             } catch (error) {
                 console.error('Erro ao enviar mensagem:', error);
@@ -560,14 +462,28 @@ export default function ChatPage() {
                                         </div>
                                     ) : (
                                         <>
-                                            {/* Renderizar todas as mensagens */}
+                                            {/* Renderizar mensagens existentes */}
                                             {messages.map((message, index) => (
                                                 <ChatBubble
-                                                    key={`${sessionId}-${index}-${message.type}-${message.content.substring(0, 10)}`}
+                                                    key={`${sessionId}-${index}-${message.type}`}
                                                     message={message}
                                                     userName={userName}
+                                                    // Streaming apenas para a última mensagem do AI, se estiver em processamento
+                                                    isStreaming={isProcessing && index === messages.length - 1 && message.type === 'ai'}
+                                                    streamingContent={streamingContent}
                                                 />
                                             ))}
+
+                                            {/* Adicionar mensagem de streaming quando necessário - quando usuário enviou mensagem e estamos aguardando resposta */}
+                                            {isProcessing && messages.length > 0 && messages[messages.length - 1].type === 'human' && (
+                                                <ChatBubble
+                                                    key={`${sessionId}-streaming`}
+                                                    message={{ type: 'ai', content: '' }}
+                                                    userName={userName}
+                                                    isStreaming={true}
+                                                    streamingContent={streamingContent}
+                                                />
+                                            )}
                                         </>
                                     )}
                                 </div>
@@ -575,54 +491,6 @@ export default function ChatPage() {
                         </>
                     )}
                 </div>
-
-                {/* Indicador "O Oráculo está pensando..." */}
-                {isProcessing && !isCreatingNewSession && (
-                    <div style={{
-                        position: 'relative',
-                        marginBottom: '20px', // Espaço acima do campo de entrada
-                        display: 'flex',
-                        justifyContent: 'center',
-                        zIndex: 10,
-                    }}>
-                        <div style={{
-                            backgroundColor: 'var(--background-subtle)',
-                            borderRadius: '99px',
-                            padding: '8px 16px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '8px',
-                            boxShadow: 'var(--shadow-md)',
-                            color: 'var(--text-secondary)',
-                            animation: 'fadeIn 0.3s ease-out'
-                        }}>
-                            <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
-                                <span style={{
-                                    height: '8px',
-                                    width: '8px',
-                                    borderRadius: '50%',
-                                    backgroundColor: '#4f46e5',
-                                    animation: 'pulse 1.5s infinite'
-                                }}></span>
-                                <span style={{
-                                    height: '8px',
-                                    width: '8px',
-                                    borderRadius: '50%',
-                                    backgroundColor: '#4f46e5',
-                                    animation: 'pulse 1.5s infinite 0.3s'
-                                }}></span>
-                                <span style={{
-                                    height: '8px',
-                                    width: '8px',
-                                    borderRadius: '50%',
-                                    backgroundColor: '#4f46e5',
-                                    animation: 'pulse 1.5s infinite 0.6s'
-                                }}></span>
-                            </div>
-                            O Oráculo está pensando...
-                        </div>
-                    </div>
-                )}
 
                 {/* Input area - MODIFICADO: Ocultar em tela de boas-vindas */}
                 {!isWelcomeScreenActive && (

@@ -1,3 +1,4 @@
+// src/components/chat/ChatBubble.tsx
 import { useState } from 'react';
 import { ChatMessage } from '@/types/chat';
 import { useTheme } from '@/context/ThemeContext';
@@ -5,20 +6,35 @@ import { useTheme } from '@/context/ThemeContext';
 interface ChatBubbleProps {
     message: ChatMessage;
     userName?: string;
+    streamingContent?: string;
+    isStreaming?: boolean;
 }
 
-export default function ChatBubble({ message, userName = '' }: ChatBubbleProps) {
+export default function ChatBubble({
+    message,
+    userName = '',
+    streamingContent = '',
+    isStreaming = false
+}: ChatBubbleProps) {
     const isUser = message.type === 'human';
     const initial = userName ? userName.charAt(0).toUpperCase() : 'U';
     const { isDarkMode } = useTheme();
     const [copied, setCopied] = useState(false);
 
-    // Função para copiar o conteúdo da mensagem
+    // Display content based on streaming
+    const displayContent = isStreaming && message.type === 'ai'
+        ? streamingContent
+        : message.content;
+
+    // Função para copiar
     const copyToClipboard = () => {
-        navigator.clipboard.writeText(message.content)
+        const textToCopy = isStreaming && message.type === 'ai'
+            ? streamingContent
+            : message.content;
+
+        navigator.clipboard.writeText(textToCopy)
             .then(() => {
                 setCopied(true);
-                // Resetar o estado após 2 segundos
                 setTimeout(() => setCopied(false), 2000);
             })
             .catch(err => {
@@ -33,7 +49,6 @@ export default function ChatBubble({ message, userName = '' }: ChatBubbleProps) 
             marginBottom: '24px',
             gap: '12px',
             alignItems: 'flex-start',
-            position: 'relative',
         }}>
             {/* Avatar - aparece à esquerda para mensagens do AI */}
             {!isUser && (
@@ -85,7 +100,18 @@ export default function ChatBubble({ message, userName = '' }: ChatBubbleProps) 
                         fontSize: '15px',
                         lineHeight: '1.5'
                     }}>
-                        {message.content}
+                        {displayContent}
+                        {isStreaming && !isUser && (
+                            <span style={{
+                                display: 'inline-block',
+                                width: '6px',
+                                height: '14px',
+                                backgroundColor: 'currentColor',
+                                marginLeft: '4px',
+                                verticalAlign: 'middle',
+                                animation: 'blink 1s infinite'
+                            }} />
+                        )}
                     </div>
                 </div>
 
@@ -110,7 +136,6 @@ export default function ChatBubble({ message, userName = '' }: ChatBubbleProps) 
                             boxShadow: 'var(--shadow-sm)',
                             backgroundColor: isDarkMode ? 'var(--background-elevated)' : 'var(--background-main)',
                         }}
-                        title="Copiar para a área de transferência"
                     >
                         {copied ? (
                             <>

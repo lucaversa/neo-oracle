@@ -284,6 +284,7 @@ export function useChat(userId?: string): UseChatReturn {
     };
 
     // Carregar mensagens para uma sessão
+    // Substitua a função loadMessagesForSession em useChat.ts por esta versão corrigida:
     const loadMessagesForSession = useCallback(async (sessionId: string, forceLoad = false) => {
         if (!sessionId) return;
 
@@ -299,6 +300,7 @@ export function useChat(userId?: string): UseChatReturn {
 
         try {
             setLoading(true);
+            setError(null);
 
             // Buscar mensagens usando OR para encontrar tanto com quanto sem espaços
             const { data, error } = await supabase
@@ -309,9 +311,13 @@ export function useChat(userId?: string): UseChatReturn {
 
             if (error) {
                 console.error('Erro ao carregar mensagens:', error.message || 'Erro desconhecido');
+                setError(`Erro ao carregar mensagens: ${error.message}`);
                 setLoading(false);
                 return;
             }
+
+            // Log para debug
+            console.log(`Encontradas ${data?.length || 0} mensagens para a sessão ${trimmedSessionId}`);
 
             if (!data || !Array.isArray(data) || data.length === 0) {
                 console.log('Nenhum dado retornado para a sessão');
@@ -322,15 +328,24 @@ export function useChat(userId?: string): UseChatReturn {
                 return;
             }
 
-            // Filtrar apenas mensagens com estrutura válida
+            // Filtrar apenas mensagens com estrutura válida e fazer debug de cada mensagem
             const validMessages = data.filter(entry => {
                 try {
-                    return entry &&
+                    const isValid = entry &&
                         entry.message &&
                         typeof entry.message === 'object' &&
                         typeof entry.message.type === 'string' &&
                         typeof entry.message.content === 'string';
-                } catch {
+
+                    if (!isValid) {
+                        console.warn('Mensagem inválida encontrada:', entry);
+                    } else {
+                        console.log(`Mensagem válida: ID=${entry.id}, tipo=${entry.message.type}, conteúdo=${entry.message.content.substring(0, 30)}...`);
+                    }
+
+                    return isValid;
+                } catch (err) {
+                    console.error('Erro ao validar mensagem:', err, entry);
                     return false;
                 }
             });
@@ -354,6 +369,7 @@ export function useChat(userId?: string): UseChatReturn {
 
             // Extrair as mensagens para a UI
             const sessionMessages = validMessages.map(entry => entry.message as ChatMessage);
+            console.log(`Carregadas ${sessionMessages.length} mensagens válidas`);
             setMessages(sessionMessages);
 
             // Contar mensagens humanas para verificar limite
@@ -369,6 +385,7 @@ export function useChat(userId?: string): UseChatReturn {
         } catch (err) {
             const errorMessage = err instanceof Error ? err.message : 'Erro desconhecido';
             console.error('Erro ao carregar mensagens:', errorMessage);
+            setError(`Erro ao carregar mensagens do histórico: ${errorMessage}`);
             setLoading(false);
         }
     }, [isNewConversation, sessionInfos, userId]);
@@ -569,7 +586,9 @@ export function useChat(userId?: string): UseChatReturn {
         }
     };
 
-    // Enviar mensagem usando a API com streaming
+    // Substitua sua função sendMessage no hook useChat.ts por esta:
+    // Substitua a função sendMessage em useChat.ts por esta versão simplificada:
+
     const sendMessage = async (content: string): Promise<void> => {
         if (!sessionId || !content.trim()) {
             console.log('Não é possível enviar: sessão ou conteúdo inválido');
@@ -605,13 +624,6 @@ export function useChat(userId?: string): UseChatReturn {
 
             // Ativar o indicador "pensando" imediatamente
             setIsProcessing(true);
-            setStreamingContent(''); // Limpar qualquer conteúdo anterior
-
-            // Fechar EventSource anterior se existir
-            if (eventSourceRef.current) {
-                eventSourceRef.current.close();
-                eventSourceRef.current = null;
-            }
 
             // Verificar se é a primeira mensagem na sessão
             if (wasNewConversation) {
@@ -638,154 +650,64 @@ export function useChat(userId?: string): UseChatReturn {
             // Obter todas as mensagens anteriores para manter o contexto
             const allMessages = [...messagesRef.current, userMessage];
 
-            // Criar um EventSource para streaming
-            const eventSource = new EventSource(
-                `/api/openai?sessionId=${encodeURIComponent(trimmedSessionId)}&t=${Date.now()}`
-            );
+            try {
+                // Adicionar mensagem de "pensando" para o usuário ver enquanto espera
+                setMessages(prev => [...prev, { type: 'ai', content: 'Oráculo está pensando...' }]);
 
-            // Persistir a referência para poder fechar depois
-            eventSourceRef.current = eventSource;
+                // Fazer a chamada para a API
+                const response = await fetch('/api/openai', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        messages: allMessages,
+                        sessionId: trimmedSessionId,
+                        userId: userId || 'anonymous',
+                        vectorStoreIds: searchableVectorStores
+                    }),
+                });
 
-            // Enviar a mensagem para a API
-            const response = await fetch('/api/openai', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    messages: allMessages,
-                    sessionId: trimmedSessionId,
-                    userId: userId || 'anonymous',
-                    vectorStoreIds: searchableVectorStores.length > 0 ? searchableVectorStores : null,
-                    stream: true,
-                }),
-            });
+                // Remover a mensagem de "pensando"
+                setMessages(prev => prev.filter(msg => msg.content !== 'Oráculo está pensando...'));
 
-            if (!response.ok) {
-                throw new Error(`Erro HTTP: ${response.status}`);
-            }
-
-            // Configurar evento de mensagem
-            eventSource.onmessage = (event) => {
-                try {
-                    // Verificar se é o evento final
-                    if (event.data === '[DONE]') {
-                        console.log('Streaming concluído');
-
-                        // Adicionar a mensagem completa ao histórico quando terminar
-                        if (streamingContent) {
-                            const aiMessage: ChatMessage = {
-                                type: 'ai',
-                                content: streamingContent
-                            };
-
-                            setMessages(prev => {
-                                // Verificar se a última mensagem já é uma resposta AI
-                                // (isso pode acontecer se carregar do Supabase antes do streaming terminar)
-                                const lastMessage = prev[prev.length - 1];
-                                if (lastMessage && lastMessage.type === 'ai') {
-                                    // Substituir a última mensagem
-                                    return [...prev.slice(0, -1), aiMessage];
-                                }
-                                // Caso contrário adicionar nova mensagem
-                                return [...prev, aiMessage];
-                            });
-                        }
-
-                        // Finalizar processamento
-                        setIsProcessing(false);
-                        setStreamingContent('');
-
-                        // Fechar o EventSource
-                        eventSource.close();
-                        eventSourceRef.current = null;
-                        return;
-                    }
-
-                    // Processar a mensagem recebida
-                    const data = JSON.parse(event.data);
-
-                    if (data.content) {
-                        // Atualizar o conteúdo do streaming
-                        setStreamingContent(prevContent => prevContent + data.content);
-                    }
-
-                    // Se houver chamadas de ferramentas (file_search), poderiam ser processadas aqui
-                    if (data.toolCalls) {
-                        console.log('Tool calls recebidas:', data.toolCalls);
-                        // Você pode implementar lógica específica para ferramentas aqui
-                    }
-
-                    if (data.error) {
-                        console.error('Erro recebido durante streaming:', data.error);
-                        setError(`Erro: ${data.error}`);
-                        setIsProcessing(false);
-                        eventSource.close();
-                        eventSourceRef.current = null;
-                    }
-                } catch (err) {
-                    console.error('Erro ao processar evento de streaming:', err);
+                if (!response.ok) {
+                    throw new Error(`Erro HTTP: ${response.status}`);
                 }
-            };
 
-            // Configurar evento de erro
-            eventSource.onerror = (error) => {
-                console.error('Erro no EventSource:', error);
-                setError('Erro de conexão durante o streaming');
+                const data = await response.json();
+
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+
+                // Adicionar a resposta do AI às mensagens
+                if (data.response) {
+                    const aiMessage: ChatMessage = {
+                        type: 'ai',
+                        content: data.response
+                    };
+
+                    setMessages(prev => [...prev, aiMessage]);
+                }
+
+                // Finalizar o processamento
                 setIsProcessing(false);
-                eventSource.close();
-                eventSourceRef.current = null;
-            };
 
-            // Estabelecer um timer de segurança para desativar o estado de processamento
-            // se não recebermos resposta após um tempo
-            setTimeout(() => {
-                if (isProcessing && eventSourceRef.current) {
-                    console.log('Timer de segurança: verificando estado de streaming');
+            } catch (error) {
+                console.error('Erro na chamada para API:', error);
+                setError('Erro ao obter resposta do servidor.');
 
-                    // Se ainda estiver processando após mais 15 segundos, desativar
-                    setTimeout(() => {
-                        if (isProcessing && eventSourceRef.current) {
-                            console.log('Desativando estado de processamento por timeout de segurança');
-                            setIsProcessing(false);
+                // Remover a mensagem de "pensando"
+                setMessages(prev => prev.filter(msg => msg.content !== 'Oráculo está pensando...'));
 
-                            if (streamingContent) {
-                                // Salvar o conteúdo parcial recebido até agora
-                                const aiMessage: ChatMessage = {
-                                    type: 'ai',
-                                    content: streamingContent
-                                };
-
-                                setMessages(prev => {
-                                    const lastMessage = prev[prev.length - 1];
-                                    if (lastMessage && lastMessage.type === 'ai') {
-                                        return [...prev.slice(0, -1), aiMessage];
-                                    }
-                                    return [...prev, aiMessage];
-                                });
-                            }
-
-                            if (eventSourceRef.current) {
-                                eventSourceRef.current.close();
-                                eventSourceRef.current = null;
-                            }
-
-                            setStreamingContent('');
-                        }
-                    }, 15000);
-                }
-            }, 20000);
+                setIsProcessing(false);
+            }
 
         } catch (err: any) {
             console.error('Erro ao enviar mensagem:', err);
             setError(err.message || 'Falha ao enviar mensagem');
             setIsProcessing(false);
-            setStreamingContent('');
-
-            if (eventSourceRef.current) {
-                eventSourceRef.current.close();
-                eventSourceRef.current = null;
-            }
         }
     };
 

@@ -176,6 +176,31 @@ export default function ChatInput({
             position: 'sticky',
             bottom: 0,
         }}>
+            {/* Indicador "Oráculo está pensando" */}
+            {isThinking && (
+                <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: '8px 0',
+                    marginBottom: '8px',
+                    color: 'var(--text-secondary)',
+                    fontSize: '14px',
+                    fontStyle: 'italic'
+                }}>
+                    <span style={{
+                        display: 'inline-block',
+                        width: '6px',
+                        height: '6px',
+                        backgroundColor: 'var(--primary-color)',
+                        borderRadius: '50%',
+                        marginRight: '12px',
+                        animation: 'pulse 1.5s infinite'
+                    }}></span>
+                    Oráculo está pensando...
+                </div>
+            )}
+
             <form
                 onSubmit={handleSubmit}
                 style={{

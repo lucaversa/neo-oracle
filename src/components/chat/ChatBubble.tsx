@@ -115,8 +115,8 @@ export default function ChatBubble({
                     </div>
                 </div>
 
-                {/* Botão de copiar - apenas para mensagens do AI */}
-                {!isUser && (
+                {/* Botão de copiar - apenas para mensagens do AI e quando NÃO estiver em streaming */}
+                {!isUser && !isStreaming && displayContent && (
                     <button
                         onClick={copyToClipboard}
                         style={{

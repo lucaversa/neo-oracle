@@ -1,5 +1,5 @@
 // src/app/api/openai/route.ts
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server'; // Corrigido para next/server
 import { supabase } from '@/lib/supabase';
 import { ChatMessage } from '@/types/chat';
 import OpenAI from 'openai';
@@ -12,220 +12,280 @@ const openai = new OpenAI({
 // Define o modelo padrão a ser usado
 const DEFAULT_MODEL = "gpt-4o";
 
-// Função para obter vector stores pesquisáveis
-async function getSearchableVectorStoreIds(): Promise<string[]> {
-    try {
-        const { data, error } = await supabase
-            .from('vector_stores')
-            .select('vector_store_id')
-            .eq('is_active', true)
-            .eq('is_searchable', true);
+// Interface adicional para o annotation da OpenAI com citações de arquivo
+interface FileCitationAnnotation {
+    type: string;
+    text: string;
+    file_citation: {
+        file_id: string;
+        quote?: string;
+    };
+    start_index: number;
+    end_index: number;
+}
 
-        if (error) {
-            console.error('Erro ao buscar vector stores:', error);
-            return [];
-        }
+// Função para formatar mensagens mantendo o estado da conversação
+function formatConversationContext(messages: ChatMessage[]): any {
+    // Mantém apenas as últimas N mensagens para evitar exceder o context window
+    const MAX_MESSAGES = 10;
+    const recentMessages = messages.slice(-MAX_MESSAGES);
 
-        return data ? data.map(store => store.vector_store_id) : [];
-    } catch (error) {
-        console.error('Erro ao buscar vector stores:', error);
-        return [];
-    }
+    // Cria uma estrutura que a API Responses entenda no formato de "conversation" (chat)
+    return {
+        type: "conversation",
+        conversation: recentMessages.map(msg => ({
+            role: msg.type === 'human' ? 'user' : 'assistant',
+            content: msg.content
+        }))
+    };
 }
 
 export async function POST(request: NextRequest) {
-    const encoder = new TextEncoder();
-
     try {
         // Extrair dados da requisição
         const {
             messages,
             sessionId,
-            userId
+            userId,
+            vectorStoreIds
         } = await request.json();
 
         // Validar dados de entrada
         if (!sessionId || !messages || !Array.isArray(messages) || messages.length === 0) {
-            return NextResponse.json(
-                { error: 'Parâmetros inválidos' },
-                { status: 400 }
-            );
+            return Response.json({ error: 'Parâmetros inválidos' }, { status: 400 });
         }
 
-        // Obter a última mensagem do usuário como input para a API
+        // Obter a última mensagem do usuário
         const lastUserMessage = messages[messages.length - 1];
         if (lastUserMessage.type !== 'human') {
-            return NextResponse.json(
-                { error: 'A última mensagem deve ser do usuário' },
-                { status: 400 }
-            );
+            return Response.json({ error: 'A última mensagem deve ser do usuário' }, { status: 400 });
         }
 
-        // Obter vector stores para pesquisa
-        const searchVectorStoreIds = await getSearchableVectorStoreIds();
+        // Limpar o sessionId para garantir consistência
+        const trimmedSessionId = sessionId.trim();
+        console.log(`ID de sessão recebido: "${sessionId}" -> Após trim: "${trimmedSessionId}"`);
 
-        // Salvar a mensagem do usuário no Supabase
-        await supabase
-            .from('n8n_chat_histories')
-            .insert([{
-                session_id: sessionId,
-                message: lastUserMessage,
-                metadata: { userId }
-            }]);
+        try {
+            // Salvar a mensagem do usuário no Supabase
+            console.log("Salvando mensagem do usuário no histórico...");
 
-        // Verificar se já existe um registro na tabela user_chat_sessions
-        if (userId) {
-            const { data: existingSession } = await supabase
-                .from('user_chat_sessions')
-                .select('id')
-                .eq('session_id', sessionId)
-                .eq('user_id', userId)
-                .limit(1);
+            const { error: userMsgError } = await supabase
+                .from('n8n_chat_histories')
+                .insert([{
+                    session_id: trimmedSessionId,
+                    message: lastUserMessage,
+                    metadata: { userId }
+                }]);
 
-            // Se não existir, criar um
-            if (!existingSession || existingSession.length === 0) {
-                const initialTitle = lastUserMessage.content.length > 30
-                    ? lastUserMessage.content.substring(0, 30) + '...'
-                    : lastUserMessage.content;
+            if (userMsgError) {
+                console.error("Erro ao salvar mensagem do usuário:", userMsgError);
+            }
+        } catch (dbError) {
+            console.error("Erro no banco de dados ao salvar mensagem do usuário:", dbError);
+            // Continuar mesmo com erro para tentar obter a resposta
+        }
 
-                await supabase
-                    .from('user_chat_sessions')
-                    .insert({
-                        session_id: sessionId,
-                        user_id: userId,
-                        title: initialTitle
-                    });
-            } else {
-                // Atualizar o timestamp para mostrar atividade recente
-                await supabase
-                    .from('user_chat_sessions')
-                    .update({ updated_at: new Date().toISOString() })
-                    .eq('session_id', sessionId)
-                    .eq('user_id', userId);
+        // Obter VectorStore IDs para pesquisa de arquivos
+        let vectorStoreId;
+        if (vectorStoreIds && vectorStoreIds.length > 0) {
+            vectorStoreId = vectorStoreIds[0];
+            console.log("Usando vector_store_id fornecido:", vectorStoreId);
+        } else {
+            // Buscar vector store padrão do banco de dados
+            try {
+                const { data, error } = await supabase
+                    .from('vector_stores')
+                    .select('vector_store_id')
+                    .eq('is_active', true)
+                    .eq('is_searchable', true)
+                    .limit(1);
+
+                if (error) {
+                    console.error('Erro ao buscar vector store padrão:', error);
+                } else if (data && data.length > 0) {
+                    vectorStoreId = data[0].vector_store_id;
+                    console.log("Usando vector_store_id do banco:", vectorStoreId);
+                }
+            } catch (e) {
+                console.error('Erro ao buscar vector store padrão:', e);
             }
         }
 
-        // Criar um TransformStream para streaming
-        const stream = new TransformStream();
-        const writer = stream.writable.getWriter();
+        try {
+            // Configurar a ferramenta file_search
+            const fileSearchTool = vectorStoreId ? [{
+                type: "file_search" as const,
+                vector_store_ids: [vectorStoreId]
+            }] : undefined;
 
-        // Flag para indicar que começamos a receber dados
-        let receivedData = false;
-        let accumulatedContent = '';
+            // Formatar context de conversação - mantém estado de mensagens anteriores
+            const conversationContext = formatConversationContext(messages);
 
-        // Configurar a chamada para a API de Responses com file_search
-        const responsePromise = openai.responses.create({
-            model: DEFAULT_MODEL,
-            input: lastUserMessage.content,
-            tools: searchVectorStoreIds.length > 0 ? [{
-                type: "file_search",
-                vector_store_ids: searchVectorStoreIds
-            }] : undefined,
-        });
+            console.log("Enviando requisição para a API de Responses...");
 
-        // Processar a resposta quando ela estiver disponível
-        responsePromise.then(async (response) => {
-            receivedData = true;
-            console.log("Resposta recebida da OpenAI:", response);
+            // Chamar a API de Responses com o context da conversação
+            const response = await openai.responses.create({
+                model: DEFAULT_MODEL,
+                input: conversationContext,
+                tools: fileSearchTool
+            });
 
-            try {
-                // Extrair conteúdo da resposta
-                let content = '';
-                if (response.output && Array.isArray(response.output)) {
-                    // Encontrar o item de tipo 'message' na saída
-                    const messageOutput = response.output.find(item => item.type === 'message');
-                    if (messageOutput && messageOutput.content && Array.isArray(messageOutput.content)) {
-                        // Extrair o texto do primeiro elemento de conteúdo do tipo 'output_text'
-                        const textContent = messageOutput.content.find(c => c.type === 'output_text');
-                        if (textContent) {
-                            content = textContent.text || '';
+            // Processar a resposta
+            let content = '';
+            let citations: string[] = [];
+
+            if (response.output && Array.isArray(response.output)) {
+                // Encontrar a mensagem de resposta
+                const messageOutput = response.output.find(item => item.type === 'message');
+                if (messageOutput && messageOutput.content && Array.isArray(messageOutput.content)) {
+                    // Processar o conteúdo da mensagem
+                    for (const contentPart of messageOutput.content) {
+                        if (contentPart.type === 'output_text') {
+                            content = contentPart.text || '';
+
+                            // Processar anotações/citações se existirem
+                            if (contentPart.annotations && contentPart.annotations.length > 0) {
+                                let annotationIndex = 0;
+                                for (const annotation of contentPart.annotations) {
+                                    // Verificar se é uma citação de arquivo e fazer o cast para o tipo correto
+                                    if (annotation.type === 'file_citation') {
+                                        // Fazer cast para nosso tipo personalizado
+                                        const fileCitation = annotation as unknown as FileCitationAnnotation;
+
+                                        // Substituir o texto da anotação por uma referência numerada
+                                        content = content.replace(
+                                            fileCitation.text,
+                                            `[${annotationIndex}]`
+                                        );
+
+                                        // Obter o ID do arquivo citado
+                                        const fileId = fileCitation.file_citation.file_id;
+
+                                        // Buscar informações do arquivo na API da OpenAI
+                                        try {
+                                            const fileInfo = await openai.files.retrieve(fileId);
+                                            citations.push(`[${annotationIndex}] ${fileInfo.filename}`);
+                                        } catch (fileErr) {
+                                            console.error("Erro ao buscar informações do arquivo:", fileErr);
+                                            citations.push(`[${annotationIndex}] Arquivo ID: ${fileId}`);
+                                        }
+
+                                        annotationIndex++;
+                                    }
+                                }
+                            }
                         }
                     }
                 }
+            }
 
-                // Se não conseguirmos extrair o conteúdo, usar uma mensagem de fallback
-                if (!content) {
-                    content = "Não foi possível gerar uma resposta com base nos documentos disponíveis.";
-                }
+            // Se não conseguirmos extrair o conteúdo, usar uma mensagem de fallback
+            if (!content) {
+                content = "Não foi possível gerar uma resposta com base nos documentos disponíveis.";
+            }
 
-                // Simular streaming enviando o conteúdo em partes
-                const chunkSize = 10; // Caracteres por chunk
-                for (let i = 0; i < content.length; i += chunkSize) {
-                    const chunk = content.substring(i, i + chunkSize);
-                    accumulatedContent += chunk;
+            // Adicionar as citações ao final se existirem
+            if (citations.length > 0) {
+                content += '\n\nReferências:\n' + citations.join('\n');
+            }
 
-                    // Enviar o chunk para o cliente
-                    await writer.write(encoder.encode(`data: ${JSON.stringify({ content: chunk })}\n\n`));
+            // Debug
+            console.log("Conteúdo final processado:", content.substring(0, 100) + "...");
 
-                    // Pequena pausa para simular streaming
-                    await new Promise(resolve => setTimeout(resolve, 10));
-                }
+            // Criar a mensagem de resposta do AI
+            const aiMessage: ChatMessage = {
+                type: 'ai',
+                content: content
+            };
 
-                // Salvar a resposta completa no Supabase
-                const aiMessage: ChatMessage = {
-                    type: 'ai',
-                    content: accumulatedContent
-                };
+            try {
+                // Salvar a resposta no banco de dados
+                console.log("Salvando resposta AI no histórico...");
 
-                await supabase
+                const { error: aiMsgError } = await supabase
                     .from('n8n_chat_histories')
                     .insert([{
-                        session_id: sessionId,
+                        session_id: trimmedSessionId,
                         message: aiMessage,
                         metadata: { userId }
                     }]);
 
-                // Indicar que a resposta foi concluída
-                await writer.write(encoder.encode('data: [DONE]\n\n'));
-                await writer.close();
-            } catch (error) {
-                console.error('Erro ao processar resposta da OpenAI:', error);
-                const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
-                await writer.write(encoder.encode(`data: ${JSON.stringify({ error: errorMessage })}\n\n`));
-                await writer.close();
+                if (aiMsgError) {
+                    console.error("Erro ao salvar resposta AI:", aiMsgError);
+                }
+            } catch (dbError) {
+                console.error("Erro no banco de dados ao salvar resposta AI:", dbError);
             }
-        }).catch(async (error) => {
-            console.error('Erro na chamada para OpenAI:', error);
-            const errorMessage = error instanceof Error ? error.message : 'Erro ao consultar a OpenAI';
-            await writer.write(encoder.encode(`data: ${JSON.stringify({ error: errorMessage })}\n\n`));
-            await writer.close();
-        });
 
-        // Função auxiliar para verificar timeout
-        const checkTimeout = async () => {
-            await new Promise(resolve => setTimeout(resolve, 10000)); // 10 segundos
-            if (!receivedData) {
-                console.error('Timeout ao aguardar resposta da OpenAI');
-                await writer.write(encoder.encode(`data: ${JSON.stringify({ error: "Timeout ao aguardar resposta" })}\n\n`));
-                await writer.close();
+            // Gerenciar sessão do usuário
+            if (userId) {
+                await manageUserSession(userId, trimmedSessionId, lastUserMessage.content);
             }
-        };
 
-        // Iniciar verificação de timeout
-        checkTimeout();
+            // Retornar a resposta completa em JSON
+            return Response.json({
+                success: true,
+                response: content
+            });
 
-        // Retornar o stream como resposta
-        return new Response(stream.readable, {
-            headers: {
-                'Content-Type': 'text/event-stream',
-                'Cache-Control': 'no-cache',
-                'Connection': 'keep-alive',
-            },
-        });
+        } catch (openAIError) {
+            console.error('Erro na API da OpenAI:', openAIError);
+            return Response.json({
+                error: `Erro na API da OpenAI: ${openAIError instanceof Error ? openAIError.message : 'Erro desconhecido'}`
+            }, { status: 500 });
+        }
     } catch (error) {
         console.error('Erro ao processar requisição:', error);
-
         const errorMessage = error instanceof Error ? error.message : 'Erro interno do servidor';
-        return NextResponse.json(
-            { error: errorMessage },
-            { status: 500 }
-        );
+
+        return Response.json({ error: errorMessage }, { status: 500 });
+    }
+}
+
+// Função auxiliar para gerenciar a sessão do usuário
+async function manageUserSession(userId: string, sessionId: string, initialMessage: string) {
+    try {
+        // Verificar se já existe um registro para esta sessão e usuário
+        const { data: existingSession } = await supabase
+            .from('user_chat_sessions')
+            .select('id')
+            .eq('session_id', sessionId)
+            .eq('user_id', userId)
+            .limit(1);
+
+        // Se não existir, criar um novo registro
+        if (!existingSession || existingSession.length === 0) {
+            const initialTitle = initialMessage.length > 30
+                ? initialMessage.substring(0, 30) + '...'
+                : initialMessage;
+
+            await supabase
+                .from('user_chat_sessions')
+                .insert({
+                    session_id: sessionId,
+                    user_id: userId,
+                    title: initialTitle
+                });
+
+            console.log('Nova sessão criada no user_chat_sessions:', sessionId);
+        } else {
+            // Atualizar o timestamp para mostrar atividade recente
+            await supabase
+                .from('user_chat_sessions')
+                .update({ updated_at: new Date().toISOString() })
+                .eq('session_id', sessionId)
+                .eq('user_id', userId);
+
+            console.log('Sessão existente atualizada:', sessionId);
+        }
+    } catch (error) {
+        console.error('Erro ao gerenciar sessão do usuário:', error);
     }
 }
 
 // Endpoint para verificação de saúde
 export async function GET() {
-    return NextResponse.json({
+    return Response.json({
         status: 'online',
         timestamp: new Date().toISOString()
     });

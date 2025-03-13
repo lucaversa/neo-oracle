@@ -516,19 +516,30 @@ export default function ChatPage() {
                                             color: 'var(--text-secondary)'
                                         }}>
                                             <div style={{
-                                                width: '80px',
-                                                height: '80px',
-                                                marginBottom: '24px',
+                                                width: '100px',
+                                                height: '100px',
+                                                marginBottom: '30px',
                                                 backgroundColor: 'var(--background-subtle)',
                                                 borderRadius: '50%',
                                                 display: 'flex',
                                                 alignItems: 'center',
-                                                justifyContent: 'center'
+                                                justifyContent: 'center',
+                                                boxShadow: 'var(--shadow-md)'
                                             }}>
-                                                <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-                                                    <line x1="9" y1="10" x2="15" y2="10"></line>
-                                                    <line x1="12" y1="7" x2="12" y2="13"></line>
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                                                    {/* Olho principal */}
+                                                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                                                    <circle cx="12" cy="12" r="3"></circle>
+
+                                                    {/* Raios ao redor do olho */}
+                                                    <line x1="12" y1="5" x2="12" y2="3"></line>
+                                                    <line x1="17" y1="7" x2="19" y2="5"></line>
+                                                    <line x1="19" y1="12" x2="21" y2="12"></line>
+                                                    <line x1="17" y1="17" x2="19" y2="19"></line>
+                                                    <line x1="12" y1="19" x2="12" y2="21"></line>
+                                                    <line x1="7" y1="17" x2="5" y2="19"></line>
+                                                    <line x1="5" y1="12" x2="3" y2="12"></line>
+                                                    <line x1="7" y1="7" x2="5" y2="5"></line>
                                                 </svg>
                                             </div>
                                             <h2 style={{
@@ -537,14 +548,14 @@ export default function ChatPage() {
                                                 color: 'var(--text-primary)',
                                                 marginBottom: '12px'
                                             }}>
-                                                Comece uma nova conversa
+                                                Como posso te ajudar?
                                             </h2>
                                             <p style={{
                                                 color: 'var(--text-secondary)',
                                                 maxWidth: '500px',
                                                 margin: '0 auto'
                                             }}>
-                                                Envie uma mensagem para iniciar o chat com o Oráculo Empresarial
+                                                Envie uma mensagem para iniciar o chat com o Oráculo
                                             </p>
                                         </div>
                                     ) : (
@@ -624,7 +635,7 @@ export default function ChatPage() {
                                 ? "Criando nova conversa..."
                                 : sessionLimitReached
                                     ? "Limite de mensagens atingido. Crie uma nova conversa."
-                                    : "Digite sua mensagem..."
+                                    : "Como posso te ajudar?"
                         }
                     />
                 )}

@@ -88,7 +88,7 @@ export default function Header({ toggleSidebar, onLogout, userName }: HeaderProp
                         fontWeight: 'bold',
                         color: '#4f46e5', // Cor fixa para o logo, não muda com o tema
                     }}>
-                        Oráculo Empresarial
+                        Oráculo
                     </span>
                 </div>
                 )}

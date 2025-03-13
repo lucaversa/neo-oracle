@@ -5,7 +5,7 @@ import { ThemeProvider } from '@/context/ThemeContext';
 import SessionTimeoutWrapper from '@/components/auth/SessionTimeoutWrapper';
 
 export const metadata = {
-  title: 'Oráculo Empresarial',
+  title: 'Oráculo',
   description: 'Chat inteligente para sua empresa',
 };
 

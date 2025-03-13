@@ -19,6 +19,7 @@ export default function WelcomeScreen({ onNewChat, hasPreviousChats, isCreating 
             padding: '20px',
             color: 'var(--text-secondary)'
         }}>
+
             <div style={{
                 width: '100px',
                 height: '100px',
@@ -30,10 +31,20 @@ export default function WelcomeScreen({ onNewChat, hasPreviousChats, isCreating 
                 justifyContent: 'center',
                 boxShadow: 'var(--shadow-md)'
             }}>
-                <svg xmlns="http://www.w3.org/2000/svg" width="50" height="50" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-                    <line x1="9" y1="10" x2="15" y2="10"></line>
-                    <line x1="12" y1="7" x2="12" y2="13"></line>
+                <svg xmlns="http://www.w3.org/2000/svg" width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    {/* Olho principal */}
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                    <circle cx="12" cy="12" r="3"></circle>
+
+                    {/* Raios ao redor do olho */}
+                    <line x1="12" y1="5" x2="12" y2="3"></line>
+                    <line x1="17" y1="7" x2="19" y2="5"></line>
+                    <line x1="19" y1="12" x2="21" y2="12"></line>
+                    <line x1="17" y1="17" x2="19" y2="19"></line>
+                    <line x1="12" y1="19" x2="12" y2="21"></line>
+                    <line x1="7" y1="17" x2="5" y2="19"></line>
+                    <line x1="5" y1="12" x2="3" y2="12"></line>
+                    <line x1="7" y1="7" x2="5" y2="5"></line>
                 </svg>
             </div>
             <h1 style={{
@@ -42,7 +53,7 @@ export default function WelcomeScreen({ onNewChat, hasPreviousChats, isCreating 
                 marginBottom: '16px',
                 color: 'var(--text-primary)'
             }}>
-                Bem-vindo ao Oráculo Empresarial
+                Bem-vindo ao Oráculo
             </h1>
 
             <p style={{

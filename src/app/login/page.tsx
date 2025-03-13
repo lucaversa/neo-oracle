@@ -59,7 +59,7 @@ export default function Login() {
 
             if (!result.success) {
                 // Tratando diferentes tipos de erro com mensagens específicas
-                if (result.error?.includes('invalid')) {
+                if (result.error?.includes('Invalid')) {
                     setError('Credenciais inválidas. Verifique seu email e senha.');
                 } else if (result.error?.includes('not found') || result.error?.includes('user') || result.error?.includes('no user')) {
                     setError('Usuário não encontrado. Verifique seu email ou contacte o administrador.');
@@ -222,7 +222,7 @@ export default function Login() {
                             fontWeight: 'bold',
                             marginBottom: '8px'
                         }}>
-                            Oráculo Empresarial
+                            Oráculo
                         </h1>
                         <p style={{
                             fontSize: '14px',
@@ -358,18 +358,6 @@ export default function Login() {
                                 >
                                     Senha
                                 </label>
-                                <a
-                                    href="#"
-                                    style={{
-                                        fontSize: '13px',
-                                        color: 'var(--primary-color)',
-                                        textDecoration: 'none',
-                                        transition: 'color 0.2s',
-                                        fontWeight: '500'
-                                    }}
-                                >
-                                    Esqueceu?
-                                </a>
                             </div>
                             <div style={{
                                 position: 'relative'

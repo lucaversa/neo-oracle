@@ -97,13 +97,21 @@ export function useChat(userId?: string): UseChatReturn {
                 return [];
             }
 
-            // Extrair e formatar informações de sessão
+            // Simplificar o processamento das sessões
             const sessions = data.map((session: UserChatSession) => {
-                // Atualizar o Map de informações de sessão
+                // Simplificar: usar título existente ou um título padrão com ID curto
+                let title = session.title || `Conversa ${session.session_id.substring(0, 6)}`;
+
+                // Limitar o tamanho do título para evitar problemas de UI
+                if (title.length > 30) {
+                    title = title.substring(0, 27) + '...';
+                }
+
+                // Atualizar o Map de informações de sessão de forma mais simples
                 const sessionInfo: SessionInfo = {
                     id: session.session_id.trim(),
-                    title: session.title,
-                    isNew: false
+                    title: title,
+                    isNew: false // Não mais necessário rastrear se é nova
                 };
 
                 // Adicionar ao estado
@@ -121,6 +129,7 @@ export function useChat(userId?: string): UseChatReturn {
             return [];
         }
     };
+
 
     // FUNÇÃO ADICIONADA: Carregar o título da sessão a partir do banco de dados
     const loadSessionTitle = async (sessionId: string) => {
@@ -193,7 +202,7 @@ export function useChat(userId?: string): UseChatReturn {
         }
     };
 
-    // FUNÇÃO MODIFICADA: Excluir (soft delete) uma sessão de chat - agora usando RPC
+    // FUNÇÃO CORRIGIDA: Excluir (soft delete) uma sessão de chat - sem usar RPC
     const deleteSession = async (sessionId: string): Promise<boolean> => {
         if (!userId || !sessionId) {
             console.error('Dados inválidos para excluir sessão');
@@ -204,15 +213,18 @@ export function useChat(userId?: string): UseChatReturn {
             const trimmedSessionId = sessionId.trim();
             console.log(`Excluindo sessão ${trimmedSessionId}`);
 
-            // Usar a função RPC para marcar como excluído
-            const { data, error } = await supabase.rpc('mark_session_as_deleted', {
-                session_id_param: trimmedSessionId,
-                user_id_param: userId
-            });
+            // Em vez de usar a função RPC, fazer um UPDATE diretamente
+            const { error } = await supabase
+                .from('user_chat_sessions')
+                .update({
+                    is_deleted: true,
+                    deleted_at: new Date().toISOString()
+                })
+                .eq('session_id', trimmedSessionId)
+                .eq('user_id', userId);
 
             if (error) {
-                console.error('Erro ao excluir sessão:', error);
-                console.error('Detalhes do erro:', JSON.stringify(error, null, 2));
+                console.error('Erro ao excluir sessão:', error.message || 'Erro desconhecido');
                 setError(`Falha ao excluir sessão: ${error.message || 'Erro desconhecido'}`);
                 return false;
             }
@@ -238,13 +250,13 @@ export function useChat(userId?: string): UseChatReturn {
             console.log('Sessão excluída com sucesso');
             return true;
         } catch (err) {
-            console.error('Erro ao excluir sessão:', err);
+            const errorMessage = err instanceof Error ? err.message : 'Erro desconhecido';
+            console.error('Erro ao excluir sessão:', errorMessage);
             setError('Erro ao excluir sessão. Tente novamente.');
             return false;
         }
     };
 
-    // MODIFICADA: loadMessagesForSession para aceitar forceLoad
     const loadMessagesForSession = useCallback(async (sessionId: string, forceLoad = false) => {
         if (!sessionId) return;
 
@@ -267,7 +279,7 @@ export function useChat(userId?: string): UseChatReturn {
                 .order('id');
 
             if (error) {
-                console.error('Erro ao carregar mensagens:', error);
+                console.error('Erro ao carregar mensagens:', error.message || 'Erro desconhecido');
                 return;
             }
 
@@ -313,43 +325,45 @@ export function useChat(userId?: string): UseChatReturn {
                     setMessages([]);
                 }
 
-                // Não mudamos o estado de processamento aqui
                 return;
             }
 
             // Extrair as mensagens para a UI
             const sessionMessages = validMessages.map(entry => entry.message as ChatMessage);
 
-            // Se temos uma mensagem pendente, precisamos verificar se ela já está no banco
+            // Simplificação: verificar se temos mensagem pendente e se precisamos mostrar o estado de processamento
             if (pendingMessageRef.current) {
                 const pendingContent = pendingMessageRef.current.content;
                 const pendingExists = sessionMessages.some(
                     msg => msg.type === 'human' && msg.content === pendingContent
                 );
 
-                if (!pendingExists) {
-                    // A mensagem pendente ainda não está no banco
-                    // Manter a mensagem pendente visível adicionando-a ao array
-                    console.log('Mantendo mensagem pendente visível na UI');
-                    sessionMessages.push(pendingMessageRef.current);
-                } else {
-                    // A mensagem pendente já foi salva no banco
-                    console.log('Mensagem pendente encontrada no banco, removendo referência local');
+                const lastMessageIsAI = sessionMessages.length > 0 &&
+                    sessionMessages[sessionMessages.length - 1].type === 'ai';
+
+                // Se a mensagem pendente existe e a última mensagem é AI, desativar o processamento
+                if (pendingExists && lastMessageIsAI) {
+                    console.log('Resposta completa detectada, desativando estado de processamento');
                     pendingMessageRef.current = null;
+                    setIsProcessing(false);
+                }
+                // Se a mensagem pendente existe mas não tem resposta, manter processamento
+                else if (pendingExists && !lastMessageIsAI) {
+                    setIsProcessing(true);
+                }
+                // Se a mensagem pendente não existe, adicionar ao array
+                else if (!pendingExists) {
+                    sessionMessages.push(pendingMessageRef.current);
                 }
             }
 
-            // Verificar novamente se ainda estamos na mesma sessão
-            if (trimmedSessionId !== sessionManager.currentSessionId) {
-                console.log('Sessão mudou durante processamento, abortando atualização');
-                return;
+            // Definir mensagens apenas se houver mudanças reais
+            const messagesChanged = JSON.stringify(sessionMessages) !== JSON.stringify(messagesRef.current);
+            if (messagesChanged || messagesRef.current.length !== sessionMessages.length) {
+                setMessages(sessionMessages);
+                messagesRef.current = [...sessionMessages];
+                lastMessageCountRef.current = sessionMessages.length;
             }
-
-            // IMPORTANTE: Sempre definir as mensagens, mesmo se parecem iguais
-            // Isso força a renderização no primeiro carregamento
-            setMessages(sessionMessages);
-            messagesRef.current = [...sessionMessages];
-            lastMessageCountRef.current = sessionMessages.length;
 
             // Quando carregamos mensagens com sucesso, não é mais uma nova conversa
             if (sessionMessages.length > 0) {
@@ -357,51 +371,30 @@ export function useChat(userId?: string): UseChatReturn {
                 setHasEmptyChat(false);
             }
 
-            console.log(`Definidas ${sessionMessages.length} mensagens para a sessão ${trimmedSessionId}`);
+            // Verificar estado "pensando" com lógica simplificada
+            if (!pendingMessageRef.current) {
+                const humanMessages = sessionMessages.filter(msg => msg.type === 'human');
+                const aiMessages = sessionMessages.filter(msg => msg.type === 'ai');
 
-            // Verificar estado "pensando" com lógica ainda mais precisa
-            const humanMessages = sessionMessages.filter(msg => msg.type === 'human');
-            const aiMessages = sessionMessages.filter(msg => msg.type === 'ai');
+                // Se a última mensagem é do tipo humano, manter o estado de processamento
+                const lastMessage = sessionMessages.length > 0 ?
+                    sessionMessages[sessionMessages.length - 1] : null;
 
-            // A mensagem pendente tem prioridade absoluta
-            if (pendingMessageRef.current !== null) {
-                console.log('Mensagem pendente detectada, mantendo estado de processamento');
-                setIsProcessing(true);
-                return; // Importante: retornar imediatamente para evitar mudanças de estado incorretas
-            }
-
-            // Verificar a ordem das mensagens
-            const lastMessage = sessionMessages.length > 0 ? sessionMessages[sessionMessages.length - 1] : null;
-            const isLastMessageHuman = lastMessage ? lastMessage.type === 'human' : false;
-
-            // Para cada mensagem humana deve haver uma mensagem do AI correspondente
-            const isWaitingForResponse: boolean = humanMessages.length > aiMessages.length || isLastMessageHuman;
-
-            // Log detalhado para depuração
-            console.log('Estado de processamento:', {
-                pendingMessage: pendingMessageRef.current !== null,
-                humanCount: humanMessages.length,
-                aiCount: aiMessages.length,
-                lastMessageType: lastMessage?.type,
-                isWaitingForResponse,
-                currentIsProcessing: isProcessing
-            });
-
-            // Forçar atualização do status "pensando" com maior prioridade
-            if (isWaitingForResponse !== isProcessing) {
-                console.log('Atualizando estado de processamento:', isWaitingForResponse);
-                setIsProcessing(isWaitingForResponse);
-
-                // Se estamos mudando de processando para não processando (finalizou)
-                if (!isWaitingForResponse && isProcessing) {
-                    // Garantir que pendingMessageRef também seja limpo
-                    pendingMessageRef.current = null;
-                    console.log('Resposta completa recebida, limpando mensagem pendente');
+                if (lastMessage && lastMessage.type === 'human') {
+                    setIsProcessing(true);
+                }
+                // Se há desbalanceamento entre mensagens humanas e AI, manter processamento
+                else if (humanMessages.length > aiMessages.length) {
+                    setIsProcessing(true);
+                }
+                // Do contrário, desativar processamento
+                else {
+                    setIsProcessing(false);
                 }
             }
 
             // Contar mensagens humanas para verificar limite
-            const humanCount = humanMessages.length;
+            const humanCount = sessionMessages.filter(msg => msg.type === 'human').length;
             const limitReached = humanCount >= MAX_HUMAN_MESSAGES_PER_SESSION;
 
             if (limitReached !== sessionLimitReached) {
@@ -411,28 +404,9 @@ export function useChat(userId?: string): UseChatReturn {
                 }
             }
 
-            // ADICIONADO: Carregar título da sessão se não tivermos essa informação
-            if (sessionId && userId) {
-                const trimmedSessionId = sessionId.trim();
-                const currentInfo = sessionInfos.get(trimmedSessionId);
-
-                if (!currentInfo || !currentInfo.title || currentInfo.title === 'Nova Conversa') {
-                    const title = await loadSessionTitle(trimmedSessionId);
-
-                    // Atualizar o título no estado local
-                    if (title) {
-                        const updatedInfos = new Map(sessionInfos);
-                        updatedInfos.set(trimmedSessionId, {
-                            id: trimmedSessionId,
-                            title,
-                            ...(currentInfo || {})
-                        });
-                        setSessionInfos(updatedInfos);
-                    }
-                }
-            }
         } catch (err) {
-            console.error('Erro ao carregar mensagens:', err);
+            const errorMessage = err instanceof Error ? err.message : 'Erro desconhecido';
+            console.error('Erro ao carregar mensagens:', errorMessage);
             // Não definir erro aqui, apenas logar, para não interromper o polling
         }
     }, [isProcessing, sessionLimitReached, isNewConversation, sessionId, sessionInfos, userId]);
@@ -440,38 +414,25 @@ export function useChat(userId?: string): UseChatReturn {
     // Proteger contra estados de processamento presos
     useEffect(() => {
         let processingGuardTimer: NodeJS.Timeout | null = null;
-        let doubleCheckTimer: NodeJS.Timeout | null = null;
 
-        // Se estamos processando, configurar timers de segurança
+        // Se estamos processando, configurar um timer de segurança simples
         if (isProcessing) {
             console.log('Configurando timer de segurança para estado de processamento');
 
-            // Primeiro, verificar se temos alguma resposta após 5 segundos
-            doubleCheckTimer = setTimeout(async () => {
-                if (isProcessing) {
-                    console.log('Verificação intermediária do estado de processamento...');
-                    // Forçar uma checagem imediata para ver se já temos resposta
-                    await loadMessagesForSession(sessionId.trim());
-                }
-            }, 5000); // Verificar após 5 segundos
-
-            // Timer principal para resetar após 15 segundos
+            // Timer para resetar após 20 segundos
             processingGuardTimer = setTimeout(() => {
                 if (isProcessing) {
                     console.log('AVISO: Estado de processamento preso por tempo excessivo. Resetando...');
                     pendingMessageRef.current = null;
                     setIsProcessing(false);
 
-                    // Forçar última tentativa de carregamento
-                    loadMessagesForSession(sessionId.trim());
+                    // Forçar carregamento de mensagens
+                    loadMessagesForSession(sessionId.trim(), true);
                 }
-            }, 15000); // 15 segundos para timeout total
+            }, 20000); // 20 segundos é um tempo razoável
         }
 
         return () => {
-            if (doubleCheckTimer !== null) {
-                clearTimeout(doubleCheckTimer);
-            }
             if (processingGuardTimer !== null) {
                 clearTimeout(processingGuardTimer);
             }
@@ -583,7 +544,6 @@ export function useChat(userId?: string): UseChatReturn {
         }, POLLING_INTERVAL);
     }, [sessionId, loadMessagesForSession]);
 
-    // MODIFICADA: createNewSession para evitar múltiplas conversas novas vazias
     const createNewSession = async (specificId?: string): Promise<string | null> => {
         try {
             // Verificar se já existe uma conversa em branco
@@ -629,9 +589,6 @@ export function useChat(userId?: string): UseChatReturn {
             const newSessionId = specificId ? specificId : uuidv4();
             console.log('ID da nova sessão:', newSessionId);
 
-            // MODIFICADO: Não criar na tabela user_chat_sessions aqui!
-            // Isso será feito apenas quando a primeira mensagem for enviada
-
             // Atualizar gerenciador de sessões
             sessionManager.currentSessionId = newSessionId;
 
@@ -641,11 +598,11 @@ export function useChat(userId?: string): UseChatReturn {
             setError(null);
             setMessages([]);
 
-            // Atualizar as informações da sessão no estado local
+            // Atualizar as informações da sessão com título simplificado
             const updatedInfos = new Map(sessionInfos);
             updatedInfos.set(newSessionId, {
                 id: newSessionId,
-                title: 'Nova Conversa',
+                title: `Nova Conversa`,
                 isNew: false
             });
             setSessionInfos(updatedInfos);
@@ -810,7 +767,7 @@ export function useChat(userId?: string): UseChatReturn {
             // Verificar se é a primeira mensagem na sessão
             const isFirstMessage = wasNewConversation || messages.length === 0;
 
-            // MODIFICADO: Se for primeira mensagem, registrar na tabela user_chat_sessions
+            // Se for primeira mensagem, registrar na tabela user_chat_sessions
             if (isFirstMessage && userId) {
                 console.log('Esta é a primeira mensagem na sessão, registrando na tabela user_chat_sessions');
 
@@ -829,10 +786,8 @@ export function useChat(userId?: string): UseChatReturn {
                 else if (!existingSession || existingSession.length === 0) {
                     console.log('Criando novo registro na tabela user_chat_sessions');
 
-                    // Título inicial baseado na primeira mensagem
-                    const initialTitle = content.length > 30
-                        ? content.substring(0, 30) + '...'
-                        : content;
+                    // Título inicial mais simples
+                    const initialTitle = 'Nova Conversa';
 
                     const { error: insertError } = await supabase
                         .from('user_chat_sessions')
@@ -866,58 +821,6 @@ export function useChat(userId?: string): UseChatReturn {
                 }
             }
 
-            // Se for a primeira mensagem, iniciar polling mais agressivo
-            if (isFirstMessage) {
-                console.log(`Iniciando polling mais frequente para a primeira mensagem`);
-                if (pollingIntervalRef.current !== null) {
-                    clearInterval(pollingIntervalRef.current);
-                    pollingIntervalRef.current = null;
-                }
-
-                // Forçar uma verificação imediata com forceLoad=true
-                await loadMessagesForSession(trimmedSessionId, true);
-
-                // Usar uma estratégia de polling mais agressiva inicialmente
-                let attemptCount = 0;
-                const maxAttempts = 15;
-                const initialInterval = 800;
-
-                pollingIntervalRef.current = setInterval(async () => {
-                    if (!isCreatingSessionRef.current &&
-                        sessionManager.currentSessionId === trimmedSessionId) {
-
-                        console.log(`Polling rápido para primeira mensagem: ${++attemptCount}/${maxAttempts}`);
-                        await loadMessagesForSession(trimmedSessionId, true);
-
-                        // Verificar se já recebemos a resposta
-                        const hasResponse = messagesRef.current.some(msg => msg.type === 'ai');
-
-                        // Se já recebemos resposta ou tentamos o suficiente, voltar ao polling normal
-                        if (hasResponse || attemptCount >= maxAttempts) {
-                            console.log('Alternando para polling normal após primeira mensagem');
-                            if (pollingIntervalRef.current !== null) {
-                                clearInterval(pollingIntervalRef.current);
-                                pollingIntervalRef.current = null;
-                            }
-
-                            // Configurar o polling normal
-                            pollingIntervalRef.current = setInterval(() => {
-                                if (!isCreatingSessionRef.current &&
-                                    sessionManager.currentSessionId === trimmedSessionId) {
-                                    loadMessagesForSession(trimmedSessionId, true);
-                                }
-                            }, POLLING_INTERVAL);
-                        }
-                    } else {
-                        // Se a sessão mudou, limpar este intervalo
-                        if (pollingIntervalRef.current !== null) {
-                            clearInterval(pollingIntervalRef.current);
-                            pollingIntervalRef.current = null;
-                        }
-                    }
-                }, initialInterval);
-            }
-
             // Verificar limite de mensagens
             const humanCount = await countHumanMessages(trimmedSessionId);
             console.log(`Contagem de mensagens humanas: ${humanCount}/${MAX_HUMAN_MESSAGES_PER_SESSION}`);
@@ -948,7 +851,7 @@ export function useChat(userId?: string): UseChatReturn {
                 // Não interromper o fluxo se essa atualização falhar
             }
 
-            // NÃO salvar no Supabase diretamente - apenas enviar para o webhook do n8n
+            // Enviar para o webhook do n8n
             const webhookUrl = process.env.NEXT_PUBLIC_N8N_WEBHOOK_URL;
             if (!webhookUrl) {
                 throw new Error('URL do webhook não configurada');
@@ -971,15 +874,28 @@ export function useChat(userId?: string): UseChatReturn {
                 throw new Error(`Erro HTTP: ${response.status}`);
             }
 
-            // Não desativar isProcessing aqui - será desativado pelo polling quando a resposta chegar
-
-            // Estabelecer um timer de backup para verificar se a resposta chegou
+            // Forçar carregamento de mensagens para atualizar o UI 
             setTimeout(async () => {
-                if (isProcessing && pendingMessageRef.current !== null) {
-                    console.log('Verificação pós-envio: forçando polling para verificar resposta');
-                    await loadMessagesForSession(trimmedSessionId, true);
+                await loadMessagesForSession(trimmedSessionId, true);
+            }, 2000);
+
+            // Estabelecer um timer de segurança para desativar o estado de processamento
+            // se não recebermos resposta após um tempo
+            setTimeout(() => {
+                if (isProcessing && pendingMessageRef.current) {
+                    console.log('Timer de segurança: verificando estado de mensagem pendente');
+                    loadMessagesForSession(trimmedSessionId, true);
+
+                    // Se ainda estiver processando após mais 5 segundos, desativar
+                    setTimeout(() => {
+                        if (isProcessing && pendingMessageRef.current) {
+                            console.log('Desativando estado de processamento por timeout de segurança');
+                            setIsProcessing(false);
+                            pendingMessageRef.current = null;
+                        }
+                    }, 5000);
                 }
-            }, 3000); // Verificar 3 segundos após o envio
+            }, 10000);
 
         } catch (err: any) {
             console.error('Erro ao enviar mensagem:', err);

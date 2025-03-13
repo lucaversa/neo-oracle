@@ -59,6 +59,8 @@ export default function Sidebar({
         }
     }, [editingSessionId]);
 
+
+
     const handleNewSession = async () => {
         // Não criar nova sessão se já estiver criando ou se já há uma conversa nova
         if (creating || isCreatingSession || isNewConversation) {

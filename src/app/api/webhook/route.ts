@@ -1,152 +1,252 @@
-// src/app/api/webhook/route.ts
-import { NextRequest, NextResponse } from 'next/server';
+// src/app/api/openai/route.ts
+import { NextRequest } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { ChatMessage } from '@/types/chat';
+import OpenAI from 'openai';
+
+// Inicializar o cliente OpenAI
+const openai = new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY,
+});
+
+// Define o modelo padrão a ser usado
+const DEFAULT_MODEL = "gpt-4o";
+
+// Instruções para o chatbot - serão adicionadas ao início do input
+const INSTRUCTIONS = `
+Você é o Oráculo, um assistente de IA sofisticado e amigável.
+
+Principais características:
+- Fornece respostas precisas, úteis e diretas
+- Personalidade amigável e atenciosa
+- Especialista em consulta e análise de documentos
+- Capaz de encontrar informações específicas nos documentos da base de conhecimento
+- Mantém um tom profissional, mas acessível
+
+Quando não souber a resposta ou não encontrar as informações nos documentos, seja honesto e diga que não sabe,
+em vez de tentar inventar uma resposta.
+
+Ao citar informações de documentos, indique de qual documento a informação foi extraída.
+
+A pergunta do usuário é: 
+`;
 
 export async function POST(request: NextRequest) {
     try {
-        const data = await request.json();
-        console.log('Webhook recebeu:', JSON.stringify(data));
+        // Extrair dados da requisição
+        const {
+            messages,
+            sessionId,
+            userId,
+            vectorStoreIds
+        } = await request.json();
 
-        // Esperamos receber do n8n a resposta do agente
-        const { session_id, response, user_id, metadata } = data;
-
-        // Remover espaços extras do session_id
-        const trimmedSessionId = session_id ? session_id.trim() : null;
-
-        if (!trimmedSessionId || !response) {
-            console.error('Requisição inválida: session_id ou response ausentes');
-            return NextResponse.json(
-                { error: 'session_id e response são obrigatórios' },
-                { status: 400 }
-            );
+        // Validar dados de entrada
+        if (!sessionId || !messages || !Array.isArray(messages) || messages.length === 0) {
+            return Response.json({ error: 'Parâmetros inválidos' }, { status: 400 });
         }
 
-        console.log(`ID de sessão recebido: "${session_id}" -> Após trim: "${trimmedSessionId}"`);
-        console.log(`Preparando para salvar resposta de tamanho ${response.length}`);
-
-        // Criar a mensagem do assistente
-        const aiMessage: ChatMessage = {
-            type: 'ai',
-            content: response
-        };
-
-        // Salvar resposta do agente no BD com o ID limpo
-        const { data: savedData, error } = await supabase
-            .from('n8n_chat_histories')
-            .insert([{
-                session_id: trimmedSessionId,
-                message: aiMessage,
-                metadata // opcional: armazenar metadados adicionais se fornecidos
-            }])
-            .select();
-
-        if (error) {
-            console.error('Erro ao salvar resposta do agente:', error);
-            return NextResponse.json(
-                { error: 'Falha ao salvar resposta', details: error.message },
-                { status: 500 }
-            );
+        // Obter a última mensagem do usuário
+        const lastUserMessage = messages[messages.length - 1];
+        if (lastUserMessage.type !== 'human') {
+            return Response.json({ error: 'A última mensagem deve ser do usuário' }, { status: 400 });
         }
 
-        console.log(`Resposta do n8n salva com sucesso para a sessão ${trimmedSessionId}`);
-        console.log(`ID do registro salvo: ${savedData?.[0]?.id || 'N/A'}`);
+        // Limpar o sessionId para garantir consistência
+        const trimmedSessionId = sessionId.trim();
 
-        // NOVO: Verificar se existe registro na tabela user_chat_sessions, 
-        // se não existir, criar um (para casos onde o n8n cria sessões)
-        if (user_id) {
-            try {
-                // Verificar se já existe um registro para esta sessão e usuário
-                const { data: existingSession, error: checkError } = await supabase
+        try {
+            // Salvar a mensagem do usuário no Supabase
+            console.log("Salvando mensagem do usuário no histórico...");
+
+            // Verificar se a sessão existe
+            const { data: existingSession, error: checkError } = await supabase
+                .from('user_chat_sessions')
+                .select('id, messages, title')
+                .eq('session_id', trimmedSessionId)
+                .eq('user_id', userId)
+                .maybeSingle();
+
+            if (checkError && checkError.code !== 'PGRST116') { // PGRST116 é "não encontrado"
+                console.error('Erro ao verificar sessão:', checkError);
+            }
+
+            if (!existingSession) {
+                // Criar nova sessão com a mensagem do usuário
+                const initialTitle = lastUserMessage.content.length > 30
+                    ? lastUserMessage.content.substring(0, 30) + '...'
+                    : lastUserMessage.content;
+
+                const { error: insertError } = await supabase
                     .from('user_chat_sessions')
-                    .select('id')
+                    .insert({
+                        session_id: trimmedSessionId,
+                        user_id: userId,
+                        title: initialTitle,
+                        messages: [lastUserMessage] // Iniciar com a mensagem do usuário
+                    });
+
+                if (insertError) {
+                    console.error("Erro ao criar nova sessão:", insertError);
+                } else {
+                    console.log('Nova sessão criada com sucesso');
+                }
+            } else {
+                // Adicionar a mensagem do usuário à sessão existente
+                const existingMessages = existingSession.messages || [];
+                const updatedMessages = [...existingMessages, lastUserMessage];
+
+                const { error: updateError } = await supabase
+                    .from('user_chat_sessions')
+                    .update({
+                        messages: updatedMessages,
+                        updated_at: new Date().toISOString()
+                    })
                     .eq('session_id', trimmedSessionId)
-                    .eq('user_id', user_id)
+                    .eq('user_id', userId);
+
+                if (updateError) {
+                    console.error("Erro ao atualizar sessão com mensagem do usuário:", updateError);
+                } else {
+                    console.log('Mensagem do usuário adicionada à sessão existente');
+                }
+            }
+        } catch (dbError) {
+            console.error("Erro no banco de dados ao salvar mensagem do usuário:", dbError);
+            // Continuar mesmo com erro para tentar obter a resposta
+        }
+
+        // Obter VectorStore ID para pesquisa
+        let vectorStoreId;
+        if (vectorStoreIds && vectorStoreIds.length > 0) {
+            vectorStoreId = vectorStoreIds[0];
+        } else {
+            // Buscar vector store padrão do banco de dados
+            try {
+                const { data, error } = await supabase
+                    .from('vector_stores')
+                    .select('vector_store_id')
+                    .eq('is_active', true)
+                    .eq('is_searchable', true)
                     .limit(1);
 
-                if (checkError) {
-                    console.error('Erro ao verificar existência da sessão:', checkError);
+                if (!error && data && data.length > 0) {
+                    vectorStoreId = data[0].vector_store_id;
                 }
-                // Se não existir, criar um novo registro
-                else if (!existingSession || existingSession.length === 0) {
-                    console.log(`Criando registro na tabela user_chat_sessions para sessão ${trimmedSessionId} e usuário ${user_id}`);
-
-                    // Determinar título inicial
-                    let initialTitle = 'Nova Conversa';
-
-                    // Tenta obter a primeira mensagem do usuário para usar como título
-                    try {
-                        const { data: firstMessage } = await supabase
-                            .from('n8n_chat_histories')
-                            .select('message')
-                            .eq('session_id', trimmedSessionId)
-                            .order('id', { ascending: true })
-                            .limit(1);
-
-                        if (firstMessage &&
-                            firstMessage.length > 0 &&
-                            firstMessage[0].message.type === 'human') {
-                            const content = firstMessage[0].message.content;
-                            initialTitle = content.length > 30
-                                ? content.substring(0, 30) + '...'
-                                : content;
-                        }
-                    } catch (titleError) {
-                        console.error('Erro ao obter primeira mensagem para título:', titleError);
-                    }
-
-                    // Inserir na tabela user_chat_sessions
-                    const { error: insertError } = await supabase
-                        .from('user_chat_sessions')
-                        .insert({
-                            session_id: trimmedSessionId,
-                            user_id: user_id,
-                            title: initialTitle
-                        });
-
-                    if (insertError) {
-                        console.error('Erro ao criar registro na tabela user_chat_sessions:', insertError);
-                    } else {
-                        console.log('Registro criado com sucesso na tabela user_chat_sessions');
-                    }
-                } else {
-                    // Atualizar o timestamp da sessão existente para marcar como recentemente usada
-                    const { error: updateError } = await supabase
-                        .from('user_chat_sessions')
-                        .update({ updated_at: new Date().toISOString() })
-                        .eq('session_id', trimmedSessionId)
-                        .eq('user_id', user_id);
-
-                    if (updateError) {
-                        console.error('Erro ao atualizar timestamp da sessão:', updateError);
-                    }
-                }
-            } catch (sessionError) {
-                console.error('Erro ao processar tabela user_chat_sessions:', sessionError);
-                // Não falhar a operação principal se esta parte falhar
+            } catch (e) {
+                console.error('Erro ao buscar vector store padrão:', e);
             }
         }
 
-        return NextResponse.json({
-            success: true,
-            message: 'Resposta processada com sucesso',
-            record_id: savedData?.[0]?.id
-        });
-    } catch (error: any) {
-        console.error('Erro no webhook:', error);
-        return NextResponse.json(
-            {
-                error: 'Erro interno do servidor',
-                details: error.message || 'Erro desconhecido'
-            },
-            { status: 500 }
-        );
+        try {
+            // Preparar o input da mensagem com as instruções
+            const userInput = INSTRUCTIONS + lastUserMessage.content;
+
+            // Configurar a ferramenta file_search se tiver um vector store
+            const tools = vectorStoreId ? [{
+                type: "file_search" as const,
+                vector_store_ids: [vectorStoreId]
+            }] : undefined;
+
+            console.log("Enviando requisição para a API Responses");
+
+            // Chamar a API Responses mantendo a estrutura existente
+            const response = await openai.responses.create({
+                model: DEFAULT_MODEL,
+                input: userInput,
+                tools: tools
+            });
+
+            console.log("Resposta recebida da API Responses");
+
+            // Extrair a resposta de texto
+            let content = '';
+
+            // Encontrar a mensagem no output
+            const messageOutput = response.output.find(item => item.type === 'message');
+            if (messageOutput && messageOutput.content) {
+                // Pegar o primeiro item do tipo 'output_text'
+                const textContent = messageOutput.content.find(c => c.type === 'output_text');
+                if (textContent) {
+                    content = textContent.text || '';
+                }
+            }
+
+            // Usar mensagem de fallback se não conseguir extrair o conteúdo
+            if (!content) {
+                content = "Não foi possível gerar uma resposta.";
+            }
+
+            // Criar a mensagem de resposta do AI
+            const aiMessage: ChatMessage = {
+                type: 'ai',
+                content: content
+            };
+
+            // Salvar a resposta da AI no banco de dados
+            try {
+                // Verificar se a sessão existe novamente (pode ter sido criada acima)
+                const { data: sessionData, error: sessionError } = await supabase
+                    .from('user_chat_sessions')
+                    .select('messages')
+                    .eq('session_id', trimmedSessionId)
+                    .eq('user_id', userId)
+                    .maybeSingle();
+
+                if (sessionError) {
+                    console.error("Erro ao buscar sessão para salvar resposta AI:", sessionError);
+                    throw sessionError;
+                }
+
+                if (sessionData) {
+                    // Atualizar sessão existente com a resposta da AI
+                    const existingMessages = sessionData.messages || [];
+                    const updatedMessages = [...existingMessages, aiMessage];
+
+                    const { error: updateError } = await supabase
+                        .from('user_chat_sessions')
+                        .update({
+                            messages: updatedMessages,
+                            updated_at: new Date().toISOString()
+                        })
+                        .eq('session_id', trimmedSessionId)
+                        .eq('user_id', userId);
+
+                    if (updateError) {
+                        console.error("Erro ao atualizar sessão com resposta AI:", updateError);
+                    } else {
+                        console.log('Resposta AI salva com sucesso');
+                    }
+                } else {
+                    console.error("Sessão não encontrada para salvar resposta AI");
+                }
+            } catch (dbError) {
+                console.error("Erro no banco de dados ao salvar resposta AI:", dbError);
+            }
+
+            // Retornar a resposta completa em JSON
+            return Response.json({
+                success: true,
+                response: content
+            });
+
+        } catch (openAIError) {
+            console.error('Erro na API da OpenAI:', openAIError);
+            return Response.json({
+                error: `Erro na API da OpenAI: ${openAIError instanceof Error ? openAIError.message : 'Erro desconhecido'}`
+            }, { status: 500 });
+        }
+    } catch (error) {
+        console.error('Erro ao processar requisição:', error);
+        const errorMessage = error instanceof Error ? error.message : 'Erro interno do servidor';
+
+        return Response.json({ error: errorMessage }, { status: 500 });
     }
 }
 
-// Adicionando suporte para verificação de saúde do endpoint
-export async function GET(request: NextRequest) {
-    return NextResponse.json({
+// Endpoint para verificação de saúde
+export async function GET() {
+    return Response.json({
         status: 'online',
         timestamp: new Date().toISOString()
     });

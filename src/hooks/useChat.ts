@@ -283,8 +283,6 @@ export function useChat(userId?: string): UseChatReturn {
         }
     };
 
-    // Carregar mensagens para uma sessão
-    // Substitua a função loadMessagesForSession em useChat.ts por esta versão corrigida:
     const loadMessagesForSession = useCallback(async (sessionId: string, forceLoad = false) => {
         if (!sessionId) return;
 
@@ -302,12 +300,12 @@ export function useChat(userId?: string): UseChatReturn {
             setLoading(true);
             setError(null);
 
-            // Buscar mensagens usando OR para encontrar tanto com quanto sem espaços
+            // CORRIGIDO: Não use .single() pois causa erro se não encontrar registro
             const { data, error } = await supabase
-                .from('n8n_chat_histories')
-                .select('*')
-                .or(`session_id.eq.${trimmedSessionId},session_id.eq. ${trimmedSessionId}`)
-                .order('id');
+                .from('user_chat_sessions')
+                .select('messages')
+                .eq('session_id', trimmedSessionId)
+                .eq('user_id', userId || '');
 
             if (error) {
                 console.error('Erro ao carregar mensagens:', error.message || 'Erro desconhecido');
@@ -317,8 +315,9 @@ export function useChat(userId?: string): UseChatReturn {
             }
 
             // Log para debug
-            console.log(`Encontradas ${data?.length || 0} mensagens para a sessão ${trimmedSessionId}`);
+            console.log(`Dados recebidos para a sessão ${trimmedSessionId}`);
 
+            // Verificar se temos dados
             if (!data || !Array.isArray(data) || data.length === 0) {
                 console.log('Nenhum dado retornado para a sessão');
                 setMessages([]);
@@ -328,27 +327,18 @@ export function useChat(userId?: string): UseChatReturn {
                 return;
             }
 
-            // Filtrar apenas mensagens com estrutura válida e fazer debug de cada mensagem
-            const validMessages = data.filter(entry => {
-                try {
-                    const isValid = entry &&
-                        entry.message &&
-                        typeof entry.message === 'object' &&
-                        typeof entry.message.type === 'string' &&
-                        typeof entry.message.content === 'string';
+            // Deve haver apenas um registro, mas pegamos o primeiro por segurança
+            const sessionData = data[0];
 
-                    if (!isValid) {
-                        console.warn('Mensagem inválida encontrada:', entry);
-                    } else {
-                        console.log(`Mensagem válida: ID=${entry.id}, tipo=${entry.message.type}, conteúdo=${entry.message.content.substring(0, 30)}...`);
-                    }
-
-                    return isValid;
-                } catch (err) {
-                    console.error('Erro ao validar mensagem:', err, entry);
-                    return false;
-                }
-            });
+            // Verificar se temos mensagens
+            if (!sessionData.messages || !Array.isArray(sessionData.messages) || sessionData.messages.length === 0) {
+                console.log('Sessão encontrada, mas sem mensagens');
+                setMessages([]);
+                setIsNewConversation(true);
+                setHasEmptyChat(true);
+                setLoading(false);
+                return;
+            }
 
             // Verificar se ainda estamos na mesma sessão
             if (trimmedSessionId !== sessionManager.currentSessionId) {
@@ -357,7 +347,16 @@ export function useChat(userId?: string): UseChatReturn {
                 return;
             }
 
-            // Se não houver mensagens válidas
+            // Filtrar apenas mensagens com estrutura válida
+            const validMessages = sessionData.messages.filter(message => {
+                return message &&
+                    typeof message === 'object' &&
+                    'type' in message &&
+                    'content' in message &&
+                    typeof message.type === 'string' &&
+                    typeof message.content === 'string';
+            });
+
             if (validMessages.length === 0) {
                 console.log('Nenhuma mensagem válida encontrada para a sessão');
                 setMessages([]);
@@ -367,13 +366,11 @@ export function useChat(userId?: string): UseChatReturn {
                 return;
             }
 
-            // Extrair as mensagens para a UI
-            const sessionMessages = validMessages.map(entry => entry.message as ChatMessage);
-            console.log(`Carregadas ${sessionMessages.length} mensagens válidas`);
-            setMessages(sessionMessages);
+            console.log(`Carregadas ${validMessages.length} mensagens válidas`);
+            setMessages(validMessages);
 
             // Contar mensagens humanas para verificar limite
-            const humanMessages = sessionMessages.filter(msg => msg.type === 'human');
+            const humanMessages = validMessages.filter(msg => msg.type === 'human');
             const limitReached = humanMessages.length >= MAX_HUMAN_MESSAGES_PER_SESSION;
             setSessionLimitReached(limitReached);
 
@@ -388,7 +385,7 @@ export function useChat(userId?: string): UseChatReturn {
             setError(`Erro ao carregar mensagens do histórico: ${errorMessage}`);
             setLoading(false);
         }
-    }, [isNewConversation, sessionInfos, userId]);
+    }, [isNewConversation, userId, sessionManager.currentSessionId]);
 
     // Carregar sessões ativas
     const loadActiveSessions = async () => {
@@ -400,6 +397,23 @@ export function useChat(userId?: string): UseChatReturn {
         return await loadUserSessions();
     };
 
+    // Função para atualizar a lista de sessões ativas
+    const refreshActiveSessions = useCallback(async () => {
+        if (!userId) return;
+
+        try {
+            console.log('Atualizando lista de sessões ativas...');
+            const sessions = await loadUserSessions();
+
+            if (sessions && sessions.length > 0) {
+                setActiveSessions(sessions);
+                console.log(`Lista de sessões atualizada: ${sessions.length} sessões encontradas`);
+            }
+        } catch (err) {
+            console.error('Erro ao atualizar sessões ativas:', err);
+        }
+    }, [userId]);
+
     // Contar mensagens humanas em uma sessão
     const countHumanMessages = async (sessionId: string): Promise<number> => {
         if (!sessionId) return 0;
@@ -410,35 +424,35 @@ export function useChat(userId?: string): UseChatReturn {
         try {
             console.log('Contando mensagens humanas para sessão:', trimmedSessionId);
 
-            // Utilizar LIKE para buscar tanto com quanto sem espaços
+            // CORRIGIDO: Não use .single() pois causa erro se não encontrar registro
             const { data, error } = await supabase
-                .from('n8n_chat_histories')
-                .select('message')
-                .or(`session_id.eq.${trimmedSessionId},session_id.eq. ${trimmedSessionId}`);
+                .from('user_chat_sessions')
+                .select('messages')
+                .eq('session_id', trimmedSessionId)
+                .eq('user_id', userId || '');
 
             if (error) {
-                console.error('Erro na consulta de mensagens:', error);
+                console.error('Erro na consulta de mensagens:', error.message || 'Erro desconhecido');
                 return 0;
             }
 
-            if (!data || !Array.isArray(data)) {
-                console.log('Nenhum dado retornado');
+            if (!data || !Array.isArray(data) || data.length === 0) {
+                console.log('Nenhuma mensagem encontrada');
                 return 0;
             }
 
-            console.log(`Encontrados ${data.length} registros para contagem`);
+            // Pegar o primeiro resultado (deve haver apenas um)
+            const sessionData = data[0];
 
-            // Filtrar apenas mensagens válidas do tipo "human"
-            const humanMessages = data.filter(item => {
-                try {
-                    return item &&
-                        item.message &&
-                        typeof item.message === 'object' &&
-                        item.message.type === 'human';
-                } catch {
-                    return false;
-                }
-            });
+            if (!sessionData.messages || !Array.isArray(sessionData.messages)) {
+                console.log('Array de mensagens não encontrado ou inválido');
+                return 0;
+            }
+
+            // Filtrar mensagens do tipo 'human'
+            const humanMessages = sessionData.messages.filter(msg =>
+                msg && typeof msg === 'object' && msg.type === 'human'
+            );
 
             console.log(`Total de mensagens humanas: ${humanMessages.length}`);
             return humanMessages.length;
@@ -586,9 +600,7 @@ export function useChat(userId?: string): UseChatReturn {
         }
     };
 
-    // Substitua sua função sendMessage no hook useChat.ts por esta:
-    // Substitua a função sendMessage em useChat.ts por esta versão simplificada:
-
+    // Função sendMessage
     const sendMessage = async (content: string): Promise<void> => {
         if (!sessionId || !content.trim()) {
             console.log('Não é possível enviar: sessão ou conteúdo inválido');
@@ -651,8 +663,8 @@ export function useChat(userId?: string): UseChatReturn {
             const allMessages = [...messagesRef.current, userMessage];
 
             try {
-                // Adicionar mensagem de "pensando" para o usuário ver enquanto espera
-                setMessages(prev => [...prev, { type: 'ai', content: 'Oráculo está pensando...' }]);
+                // Remover indicador de "pensando" antes de fazer a chamada
+                setMessages(prev => prev.filter(msg => msg.content !== 'Oráculo está pensando...'));
 
                 // Fazer a chamada para a API
                 const response = await fetch('/api/openai', {
@@ -667,9 +679,6 @@ export function useChat(userId?: string): UseChatReturn {
                         vectorStoreIds: searchableVectorStores
                     }),
                 });
-
-                // Remover a mensagem de "pensando"
-                setMessages(prev => prev.filter(msg => msg.content !== 'Oráculo está pensando...'));
 
                 if (!response.ok) {
                     throw new Error(`Erro HTTP: ${response.status}`);
@@ -697,19 +706,30 @@ export function useChat(userId?: string): UseChatReturn {
             } catch (error) {
                 console.error('Erro na chamada para API:', error);
                 setError('Erro ao obter resposta do servidor.');
-
-                // Remover a mensagem de "pensando"
-                setMessages(prev => prev.filter(msg => msg.content !== 'Oráculo está pensando...'));
-
                 setIsProcessing(false);
             }
-
         } catch (err: any) {
             console.error('Erro ao enviar mensagem:', err);
             setError(err.message || 'Falha ao enviar mensagem');
             setIsProcessing(false);
         }
+        finally {
+            // Atualizar a lista de sessões ativas após enviar a mensagem
+            try {
+                await refreshActiveSessions();
+            } catch (refreshError) {
+                console.error('Erro ao atualizar lista de sessões:', refreshError);
+            }
+        }
     };
+
+    // Efeito para atualizar a lista quando o timestamp mudar
+    useEffect(() => {
+        if (lastMessageTimestamp > 0) {
+            console.log('Detectada nova mensagem, atualizando lista de sessões...');
+            refreshActiveSessions();
+        }
+    }, [lastMessageTimestamp, refreshActiveSessions]);
 
     // Inicializar o hook
     useEffect(() => {

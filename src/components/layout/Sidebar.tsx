@@ -1,5 +1,5 @@
 // src/components/layout/Sidebar.tsx
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useTheme } from '@/context/ThemeContext';
 import { SessionInfo } from '@/types/chat';
 import SessionEditor from '@/components/chat/SessionEditor';
@@ -41,13 +41,11 @@ export default function Sidebar({
     const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
     const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
     const { isDarkMode } = useTheme();
-    const sessionsContainerRef = useRef<HTMLDivElement>(null);
 
-    // Estado para paginação com lazy loading
-    const [displayCount, setDisplayCount] = useState<number>(10);
+    // Pagination state
+    const [displayLimit] = useState<number>(20);
+    const [showAllChats, setShowAllChats] = useState<boolean>(false);
     const [visibleSessions, setVisibleSessions] = useState<string[]>([]);
-    const [allUniqueSessions, setAllUniqueSessions] = useState<string[]>([]);
-    const [canLoadMore, setCanLoadMore] = useState(false);
 
     // Usar a prop isCreatingSession para controlar o estado
     useEffect(() => {
@@ -61,41 +59,15 @@ export default function Sidebar({
         }
     }, [isCreatingSession]);
 
-    // Processar as sessões ativas para remover duplicatas e a sessão vazia atual
+    // Update visible sessions when active sessions change
     useEffect(() => {
-        // Filtrar sessões duplicadas e a sessão vazia atual
+        // Filter the current empty session if it's new
         const uniqueSessions = Array.from(new Set(activeSessions.map(id => id.trim())))
             .filter(id => !(isNewConversation && id === currentSessionId));
 
-        setAllUniqueSessions(uniqueSessions);
-
-        // Atualizar as sessões visíveis com base no displayCount atual
-        setVisibleSessions(uniqueSessions.slice(0, displayCount));
-
-        // Verificar se ainda há mais sessões para carregar
-        setCanLoadMore(uniqueSessions.length > displayCount);
-    }, [activeSessions, currentSessionId, displayCount, isNewConversation, lastMessageTimestamp]);
-
-    // Adicionar evento de scroll para detectar quando o usuário chegou ao final da lista
-    useEffect(() => {
-        const container = sessionsContainerRef.current;
-        if (!container) return;
-
-        const handleScroll = () => {
-            // Verificar se chegamos perto do final da lista
-            // offsetHeight = altura visível, scrollTop = quanto já rolou, scrollHeight = altura total
-            const { scrollTop, scrollHeight, clientHeight } = container;
-
-            // Se estamos a 100px do final e ainda há mais sessões para carregar
-            if (scrollHeight - scrollTop - clientHeight < 100 && canLoadMore) {
-                // Carregar mais 10 sessões
-                setDisplayCount(prev => prev + 10);
-            }
-        };
-
-        container.addEventListener('scroll', handleScroll);
-        return () => container.removeEventListener('scroll', handleScroll);
-    }, [canLoadMore]);
+        // Set visible sessions based on display limit
+        setVisibleSessions(uniqueSessions.slice(0, displayLimit));
+    }, [activeSessions, currentSessionId, displayLimit, isNewConversation, lastMessageTimestamp]);
 
     const handleNewSession = async () => {
         // Não criar nova sessão se já estiver criando ou se já há uma conversa nova ou se estiver processando
@@ -130,6 +102,9 @@ export default function Sidebar({
 
         // Chamar o seletor de sessão imediatamente, sem delay
         onSessionSelect(trimmedId);
+
+        // Close all sessions modal if open
+        setShowAllChats(false);
     };
 
     // Função simplificada para iniciar edição
@@ -166,6 +141,10 @@ export default function Sidebar({
         }
     };
 
+    const toggleShowAllChats = () => {
+        setShowAllChats(!showAllChats);
+    };
+
     const hasDuplicateSessions = (): boolean => {
         if (activeSessions.length <= 1) return false;
         const uniqueIds = new Set(activeSessions.map(id => id.trim()));
@@ -191,6 +170,16 @@ export default function Sidebar({
         sidebarStyle.position = 'relative';
         sidebarStyle.transform = 'translateX(0)';
     }
+
+    // Filter out duplicate sessions and current empty session if it's new
+    const uniqueSessions = Array.from(new Set(activeSessions.map(id => id.trim())))
+        .filter(id => !(isNewConversation && id === currentSessionId));
+
+    // Check if we need to show 'See more' button
+    const shouldShowSeeMoreButton = uniqueSessions.length > displayLimit;
+
+    // All sessions for the modal view
+    const allSessions = uniqueSessions;
 
     return (
         <div style={sidebarStyle}>
@@ -319,15 +308,11 @@ export default function Sidebar({
                 </div>
             )}
 
-            {/* Container com referência para detectar scroll */}
-            <div
-                ref={sessionsContainerRef}
-                style={{
-                    flexGrow: 1,
-                    overflowY: 'auto',
-                    padding: '8px 12px'
-                }}
-            >
+            <div style={{
+                flexGrow: 1,
+                overflowY: 'auto',
+                padding: '8px 12px'
+            }}>
                 {visibleSessions.length === 0 ? (
                     <div style={{
                         textAlign: 'center',
@@ -544,30 +529,254 @@ export default function Sidebar({
                                 </li>
                             );
                         })}
-
-                        {/* Indicador de carregamento se houver mais chats a serem carregados */}
-                        {canLoadMore && (
-                            <li style={{
-                                textAlign: 'center',
-                                padding: '10px 0',
-                                fontSize: '14px',
-                                color: 'var(--text-tertiary)'
-                            }}>
-                                <div style={{
-                                    display: 'inline-block',
-                                    width: '20px',
-                                    height: '20px',
-                                    borderRadius: '50%',
-                                    border: '2px solid var(--border-color)',
-                                    borderTopColor: 'var(--primary-color)',
-                                    animation: 'spin 1s linear infinite'
-                                }}></div>
-                                <span style={{ marginLeft: '8px' }}>Carregando mais...</span>
-                            </li>
-                        )}
                     </ul>
                 )}
+
+                {/* Botão "Ver mais" - apenas mostra se houver mais do que o limite */}
+                {shouldShowSeeMoreButton && (
+                    <div style={{
+                        padding: '12px 0',
+                        textAlign: 'center',
+                        borderTop: '1px solid var(--border-subtle)',
+                        marginTop: '8px'
+                    }}>
+                        <button
+                            onClick={toggleShowAllChats}
+                            style={{
+                                background: 'transparent',
+                                border: '1px solid var(--border-color)',
+                                padding: '8px 16px',
+                                borderRadius: '6px',
+                                color: 'var(--text-secondary)',
+                                fontSize: '14px',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: '6px',
+                                margin: '0 auto',
+                                transition: 'all 0.2s ease'
+                            }}
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <circle cx="11" cy="11" r="8"></circle>
+                                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                                <line x1="11" y1="8" x2="11" y2="14"></line>
+                                <line x1="8" y1="11" x2="14" y2="11"></line>
+                            </svg>
+                            Ver mais ({uniqueSessions.length - displayLimit} restantes)
+                        </button>
+                    </div>
+                )}
             </div>
+
+            {/* Modal para exibir todas as conversas */}
+            {showAllChats && (
+                <div style={{
+                    position: 'fixed',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+                    zIndex: 100,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: '20px'
+                }}>
+                    <div className="chats-modal" style={{
+                        backgroundColor: 'var(--background-elevated)',
+                        borderRadius: '12px',
+                        width: '100%',
+                        maxWidth: '550px',
+                        maxHeight: '80vh',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        boxShadow: 'var(--shadow-lg)'
+                    }}>
+                        <div style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            padding: '16px 20px',
+                            borderBottom: '1px solid var(--border-color)'
+                        }}>
+                            <h3 style={{
+                                fontSize: '18px',
+                                fontWeight: '600',
+                                color: 'var(--text-primary)'
+                            }}>
+                                Todas as Conversas ({allSessions.length})
+                            </h3>
+                            <button
+                                onClick={toggleShowAllChats}
+                                style={{
+                                    background: 'transparent',
+                                    border: 'none',
+                                    color: 'var(--text-tertiary)',
+                                    borderRadius: '4px',
+                                    cursor: 'pointer',
+                                    padding: '6px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center'
+                                }}
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                                </svg>
+                            </button>
+                        </div>
+
+                        <div style={{
+                            overflowY: 'auto',
+                            flex: 1,
+                            padding: '12px'
+                        }}>
+                            <ul style={{
+                                listStyle: 'none',
+                                padding: 0,
+                                margin: 0,
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: '8px'
+                            }}>
+                                {allSessions.map((session) => {
+                                    const trimmedSession = session.trim();
+                                    const isActive = currentSessionId.trim() === trimmedSession && !isNewConversation;
+                                    const sessionInfo = sessionInfos.get(trimmedSession);
+
+                                    return (
+                                        <li key={`all-${trimmedSession}`}>
+                                            <div style={{
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                width: '100%',
+                                                padding: '12px',
+                                                borderRadius: '8px',
+                                                backgroundColor: isActive
+                                                    ? 'var(--background-subtle)'
+                                                    : 'var(--background-main)',
+                                                cursor: 'pointer',
+                                                transition: 'background-color 0.2s',
+                                                border: '1px solid var(--border-subtle)'
+                                            }}
+                                                onClick={() => {
+                                                    handleSelectSession(trimmedSession);
+                                                }}>
+                                                <svg
+                                                    xmlns="http://www.w3.org/2000/svg"
+                                                    width="18"
+                                                    height="18"
+                                                    viewBox="0 0 24 24"
+                                                    fill="none"
+                                                    stroke="currentColor"
+                                                    strokeWidth="2"
+                                                    strokeLinecap="round"
+                                                    strokeLinejoin="round"
+                                                    style={{ marginRight: '12px', color: 'var(--text-tertiary)' }}
+                                                >
+                                                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                                                </svg>
+                                                <span style={{
+                                                    fontWeight: isActive ? '600' : '500',
+                                                    flex: 1,
+                                                    overflow: 'hidden',
+                                                    textOverflow: 'ellipsis',
+                                                    whiteSpace: 'nowrap',
+                                                    color: 'var(--text-primary)'
+                                                }}>
+                                                    {sessionInfo?.title || `Conversa ${trimmedSession.substring(0, 6)}`}
+                                                </span>
+
+                                                <div style={{
+                                                    display: 'flex',
+                                                    gap: '8px'
+                                                }}>
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            toggleShowAllChats(); // Fechar o modal primeiro
+                                                            setTimeout(() => {
+                                                                handleStartEdit(trimmedSession);
+                                                            }, 100);
+                                                        }}
+                                                        style={{
+                                                            padding: '8px',
+                                                            backgroundColor: 'var(--background-subtle)',
+                                                            border: 'none',
+                                                            borderRadius: '4px',
+                                                            cursor: 'pointer',
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            justifyContent: 'center',
+                                                            color: 'var(--text-tertiary)'
+                                                        }}
+                                                    >
+                                                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                                                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                                                        </svg>
+                                                    </button>
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            toggleShowAllChats(); // Fechar o modal primeiro
+                                                            setTimeout(() => {
+                                                                setShowDeleteConfirm(trimmedSession);
+                                                            }, 100);
+                                                        }}
+                                                        style={{
+                                                            padding: '8px',
+                                                            backgroundColor: 'var(--background-subtle)',
+                                                            border: 'none',
+                                                            borderRadius: '4px',
+                                                            cursor: 'pointer',
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            justifyContent: 'center',
+                                                            color: 'var(--text-tertiary)'
+                                                        }}
+                                                    >
+                                                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                            <polyline points="3 6 5 6 21 6"></polyline>
+                                                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                                                        </svg>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </li>
+                                    );
+                                })}
+                            </ul>
+                        </div>
+
+                        <div style={{
+                            padding: '16px',
+                            borderTop: '1px solid var(--border-color)',
+                            textAlign: 'center'
+                        }}>
+                            <button
+                                onClick={toggleShowAllChats}
+                                style={{
+                                    padding: '10px 20px',
+                                    backgroundColor: 'var(--primary-color)',
+                                    color: 'white',
+                                    border: 'none',
+                                    borderRadius: '8px',
+                                    cursor: 'pointer',
+                                    fontWeight: '500',
+                                    width: '100%'
+                                }}
+                            >
+                                Fechar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

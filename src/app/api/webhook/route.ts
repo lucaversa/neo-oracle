@@ -10,7 +10,7 @@ const openai = new OpenAI({
 });
 
 // Define o modelo padrão a ser usado
-const DEFAULT_MODEL = "gpt-4o";
+const DEFAULT_MODEL = "o3-mini";
 
 // Instruções para o chatbot - serão adicionadas ao início do input
 const INSTRUCTIONS = `
@@ -22,6 +22,7 @@ Principais características:
 - Especialista em consulta e análise de documentos
 - Capaz de encontrar informações específicas nos documentos da base de conhecimento
 - Mantém um tom profissional, mas acessível
+- Apresente-se caso necessário ou caso seja sua primeira interação
 
 Quando não souber a resposta ou não encontrar as informações nos documentos, seja honesto e diga que não sabe,
 em vez de tentar inventar uma resposta.

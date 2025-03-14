@@ -11,6 +11,7 @@ import Header from '@/components/layout/Header';
 import Sidebar from '@/components/layout/Sidebar';
 import WelcomeScreen from '@/components/chat/WelcomeScreen';
 import { v4 as uuidv4 } from 'uuid';
+import ThinkingIndicator from '@/components/chat/ThinkingIndicator';
 
 export default function ChatPage() {
     const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -521,20 +522,38 @@ export default function ChatPage() {
                     )}
                 </div>
 
-                {/* Input area - MODIFICADO: Ocultar em tela de boas-vindas */}
+                {/* Footer: ThinkingIndicator + ChatInput */}
                 {!isWelcomeScreenActive && (
-                    <ChatInput
-                        onSendMessage={handleSendMessage}
-                        disabled={loading || sessionLimitReached || isCreatingNewSession}
-                        isThinking={isProcessing}
-                        placeholder={
-                            isCreatingNewSession
-                                ? "Criando nova conversa..."
-                                : sessionLimitReached
-                                    ? "Limite de mensagens atingido. Crie uma nova conversa."
-                                    : "Como posso te ajudar?"
-                        }
-                    />
+                    <div style={{ width: '100%' }}>
+                        {/* Indicador "Oráculo está pensando" centralizado acima do ChatInput */}
+                        {isProcessing && (
+                            <div style={{
+                                width: '100%',
+                                display: 'flex',
+                                justifyContent: 'center',
+                                padding: '0 16px',
+                                marginBottom: '12px'
+                            }}>
+                                <ThinkingIndicator
+                                    variant="pulse"
+                                    customText={streamingContent ? "Oráculo está respondendo..." : "Oráculo está pensando..."}
+                                />
+                            </div>
+                        )}
+
+                        <ChatInput
+                            onSendMessage={handleSendMessage}
+                            disabled={loading || sessionLimitReached || isCreatingNewSession}
+                            isThinking={isProcessing}
+                            placeholder={
+                                isCreatingNewSession
+                                    ? "Criando nova conversa..."
+                                    : sessionLimitReached
+                                        ? "Limite de mensagens atingido. Crie uma nova conversa."
+                                        : "Como posso te ajudar?"
+                            }
+                        />
+                    </div>
                 )}
             </div>
         </div>

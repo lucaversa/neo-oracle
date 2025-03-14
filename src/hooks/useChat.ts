@@ -652,7 +652,10 @@ export function useChat(userId?: string): UseChatReturn {
         }
     };
 
-    // Função sendMessage
+    // Substitua apenas a função sendMessage no arquivo src/hooks/useChat.ts
+
+    // Substitua apenas a função sendMessage no arquivo src/hooks/useChat.ts
+
     const sendMessage = async (content: string): Promise<void> => {
         if (!sessionId || !content.trim()) {
             console.log('Não é possível enviar: sessão ou conteúdo inválido');
@@ -688,6 +691,7 @@ export function useChat(userId?: string): UseChatReturn {
 
             // Ativar o indicador "pensando" imediatamente
             setIsProcessing(true);
+            setStreamingContent(''); // Iniciar com conteúdo vazio
 
             // Verificar se é a primeira mensagem na sessão
             if (wasNewConversation) {
@@ -715,13 +719,11 @@ export function useChat(userId?: string): UseChatReturn {
             const allMessages = [...messagesRef.current, userMessage];
 
             try {
-                // NÃO remover indicador de "pensando" - manter o bubble visível durante toda a chamada
-
-                // Configurar um timeout mais longo usando AbortController
+                // Configurar um timeout usando AbortController
                 const controller = new AbortController();
                 const timeoutId = setTimeout(() => controller.abort(), 180000); // 3 minutos de timeout
 
-                // Fazer a chamada para a API com sinal de abort
+                // Iniciar uma solicitação fetch para obter o stream
                 const response = await fetch('/api/openai', {
                     method: 'POST',
                     headers: {
@@ -739,28 +741,110 @@ export function useChat(userId?: string): UseChatReturn {
                 // Limpar o timeout se a resposta chegou
                 clearTimeout(timeoutId);
 
-                if (!response.ok) {
+                if (!response.ok || !response.body) {
                     throw new Error(`Erro HTTP: ${response.status}`);
                 }
 
-                const data = await response.json();
+                // Inicializar mensagem do AI vazia em real-time
+                let aiMessageAdded = false;
+                const addAiMessage = () => {
+                    if (!aiMessageAdded) {
+                        setMessages(prev => [...prev, { type: 'ai', content: '' }]);
+                        aiMessageAdded = true;
+                    }
+                };
 
-                if (data.error) {
-                    throw new Error(data.error);
+                // Processar o stream manualmente usando Reader
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let accumulatedContent = '';
+
+                // Adicionar a mensagem AI vazia imediatamente, não esperamos pelo primeiro chunk
+                addAiMessage();
+
+                while (true) {
+                    const { done, value } = await reader.read();
+
+                    if (done) {
+                        console.log('Stream completo');
+                        break;
+                    }
+
+                    // Decodificar o chunk
+                    const chunk = decoder.decode(value, { stream: true });
+                    console.log('Chunk recebido:', chunk);
+
+                    // Processar o chunk como texto (pode conter múltiplas linhas de eventos)
+                    const lines = chunk.split('\n');
+                    for (let i = 0; i < lines.length; i++) {
+                        const line = lines[i].trim();
+
+                        // Pular linhas vazias
+                        if (!line) continue;
+
+                        // Verificar se é uma linha de dados
+                        if (line.startsWith('data: ')) {
+                            const data = line.substring(6);
+
+                            try {
+                                // Tentar parsear como JSON
+                                const jsonData = JSON.parse(data);
+
+                                // Se temos um delta de texto
+                                if (jsonData.text !== undefined || jsonData.full !== undefined) {
+                                    // Atualizar o conteúdo acumulado se temos 'full'
+                                    if (jsonData.full !== undefined) {
+                                        accumulatedContent = jsonData.full;
+                                    }
+                                    // Ou adicionar o delta se temos apenas 'text'
+                                    else if (jsonData.text !== undefined) {
+                                        accumulatedContent += jsonData.text;
+                                    }
+
+                                    // Atualizar o estado de streaming para debug
+                                    setStreamingContent(accumulatedContent);
+
+                                    // Atualizar a última mensagem do AI com o conteúdo atual
+                                    setMessages(prev => {
+                                        const newMessages = [...prev];
+                                        // Atualizar a última mensagem AI
+                                        for (let i = newMessages.length - 1; i >= 0; i--) {
+                                            if (newMessages[i].type === 'ai') {
+                                                newMessages[i].content = accumulatedContent;
+                                                break;
+                                            }
+                                        }
+                                        return newMessages;
+                                    });
+                                }
+
+                                // Se recebemos "Done", finalizamos o processamento
+                                if (data === 'Done' || jsonData.done) {
+                                    console.log('Resposta completa recebida');
+                                    break;
+                                }
+                            } catch (e) {
+                                // Se não for JSON, apenas logar para debug
+                                console.log('Dados não-JSON recebidos:', data);
+                            }
+                        }
+                        // Verificar eventos de erro
+                        else if (line.startsWith('event: error')) {
+                            // A próxima linha deve conter os dados do erro
+                            if (i + 1 < lines.length && lines[i + 1].startsWith('data: ')) {
+                                const errorData = lines[i + 1].substring(6);
+                                console.error('Erro no stream:', errorData);
+                                throw new Error(JSON.parse(errorData).error || 'Erro no stream');
+                            }
+                        }
+                    }
                 }
 
-                // Adicionar a resposta do AI às mensagens
-                if (data.response) {
-                    const aiMessage: ChatMessage = {
-                        type: 'ai',
-                        content: data.response
-                    };
+                console.log('Stream processado com sucesso');
 
-                    setMessages(prev => [...prev, aiMessage]);
-                }
-
-                // Finalizar o processamento
+                // Resetar estado
                 setIsProcessing(false);
+                setStreamingContent('');
 
             } catch (error) {
                 console.error('Erro na chamada para API:', error);
@@ -798,15 +882,16 @@ export function useChat(userId?: string): UseChatReturn {
                 // Se for uma nova conversa e houve erro, cancelar a conversa
                 if (wasNewConversation && messagesRef.current.length <= 1) {
                     console.log('Erro em nova conversa. Cancelando a criação da sessão.');
-                    // Aqui poderíamos adicionar código para excluir a sessão recém-criada no banco de dados
                 }
 
                 setIsProcessing(false);
+                setStreamingContent('');
             }
         } catch (err: any) {
             console.error('Erro ao enviar mensagem:', err);
             setError(err.message || 'Falha ao enviar mensagem');
             setIsProcessing(false);
+            setStreamingContent('');
         }
         finally {
             // Atualizar a lista de sessões ativas após enviar a mensagem

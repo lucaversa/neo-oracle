@@ -2,7 +2,6 @@
 import { useState, useEffect } from 'react';
 import { ChatMessage } from '@/types/chat';
 import { useTheme } from '@/context/ThemeContext';
-import ThinkingIndicator from './ThinkingIndicator';
 
 interface ChatBubbleProps {
     message: ChatMessage;
@@ -31,18 +30,12 @@ export default function ChatBubble({
         }
     }, [isStreaming]);
 
-    // Display content based on streaming
-    const displayContent = isStreaming && message.type === 'ai'
-        ? streamingContent || ''  // Não mostrar texto padrão, pois usaremos o ThinkingIndicator
-        : message.content;
+    // Display content based on streaming - aqui o conteúdo do streaming deve ser exibido
+    const displayContent = message.content;
 
     // Função para copiar
     const copyToClipboard = () => {
-        const textToCopy = isStreaming && message.type === 'ai'
-            ? streamingContent
-            : message.content;
-
-        navigator.clipboard.writeText(textToCopy)
+        navigator.clipboard.writeText(displayContent)
             .then(() => {
                 setCopied(true);
                 setTimeout(() => setCopied(false), 2000);
@@ -95,7 +88,7 @@ export default function ChatBubble({
                 {/* Bolha de mensagem */}
                 <div style={{
                     borderRadius: '18px',
-                    padding: isStreaming && !isUser ? '0' : '12px 16px', // Removemos o padding quando for ThinkingIndicator
+                    padding: '12px 16px',
                     color: isUser
                         ? 'white'
                         : 'var(--text-primary)',
@@ -103,12 +96,9 @@ export default function ChatBubble({
                     position: 'relative',
                     borderBottomLeftRadius: !isUser ? '4px' : undefined,
                     borderBottomRightRadius: isUser ? '4px' : undefined,
-                    // Definir backgroundColor apenas uma vez com toda a lógica
-                    backgroundColor: isStreaming && !isUser
-                        ? 'transparent'
-                        : (isUser
-                            ? '#4f46e5'
-                            : (isDarkMode ? 'var(--background-subtle)' : 'var(--background-subtle)'))
+                    backgroundColor: isUser
+                        ? '#4f46e5'
+                        : (isDarkMode ? 'var(--background-subtle)' : 'var(--background-subtle)')
                 }}>
                     <div style={{
                         whiteSpace: 'pre-wrap',
@@ -116,21 +106,23 @@ export default function ChatBubble({
                         fontSize: '15px',
                         lineHeight: '1.5'
                     }}>
-                        {/* Se estiver em streaming e for mensagem do AI, mostrar o ThinkingIndicator */}
-                        {isStreaming && !isUser ? (
-                            <ThinkingIndicator
-                                variant="pulse"
-                                customText="Oráculo está pensando"
-                            />
-                        ) : (
-                            // Caso contrário, mostrar o conteúdo normal
-                            displayContent
+                        {displayContent}
+                        {isStreaming && !isUser && (
+                            <span className="typing-cursor" style={{
+                                display: 'inline-block',
+                                width: '2px',
+                                height: '16px',
+                                backgroundColor: 'currentColor',
+                                marginLeft: '4px',
+                                verticalAlign: 'middle',
+                                animation: 'blinkCursor 0.8s step-start infinite'
+                            }}></span>
                         )}
                     </div>
                 </div>
 
-                {/* Botão de copiar - apenas para mensagens do AI e quando NÃO estiver em streaming */}
-                {!isUser && !isStreaming && displayContent && (
+                {/* Botão de copiar - apenas para mensagens do AI e quando houver conteúdo */}
+                {!isUser && displayContent && (
                     <button
                         onClick={copyToClipboard}
                         style={{

@@ -1,5 +1,4 @@
-// src/components/layout/Sidebar.tsx
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useTheme } from '@/context/ThemeContext';
 import { SessionInfo } from '@/types/chat';
 import SessionEditor from '@/components/chat/SessionEditor';
@@ -18,7 +17,7 @@ interface SidebarProps {
     isCreatingSession?: boolean;
     isNewConversation?: boolean;
     lastMessageTimestamp?: number;
-    isProcessing?: boolean; // Nova prop para controlar estado de processamento
+    isProcessing?: boolean;
 }
 
 export default function Sidebar({
@@ -35,17 +34,21 @@ export default function Sidebar({
     isCreatingSession = false,
     isNewConversation = false,
     lastMessageTimestamp = 0,
-    isProcessing = false // Valor padrão
+    isProcessing = false
 }: SidebarProps) {
     const [creating, setCreating] = useState(false);
     const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
     const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
     const { isDarkMode } = useTheme();
 
-    // Pagination state
-    const [displayLimit] = useState<number>(20);
-    const [showAllChats, setShowAllChats] = useState<boolean>(false);
+    // Modificações para scroll infinito
+    const [displayLimit, setDisplayLimit] = useState<number>(20); // Exibir inicialmente apenas 10 chats
     const [visibleSessions, setVisibleSessions] = useState<string[]>([]);
+    const [isLoadingMore, setIsLoadingMore] = useState<boolean>(false);
+    const sessionsContainerRef = useRef<HTMLDivElement>(null);
+
+    // Estado para controlar a altura do container de sessões
+    const [containerHeight, setContainerHeight] = useState<number>(450); // Altura padrão inicial maior
 
     // Usar a prop isCreatingSession para controlar o estado
     useEffect(() => {
@@ -67,12 +70,94 @@ export default function Sidebar({
 
         // Set visible sessions based on display limit
         setVisibleSessions(uniqueSessions.slice(0, displayLimit));
+
+        // Verificar se precisamos carregar mais em caso de container grande
+        setTimeout(() => {
+            const container = sessionsContainerRef.current;
+            if (container) {
+                const { scrollHeight, clientHeight } = container;
+                // Se após o carregamento inicial não temos scroll suficiente, carregar mais
+                if (scrollHeight <= clientHeight && uniqueSessions.length > displayLimit) {
+                    loadMoreSessions();
+                }
+            }
+        }, 300); // Pequeno delay para garantir que o DOM foi atualizado
     }, [activeSessions, currentSessionId, displayLimit, isNewConversation, lastMessageTimestamp]);
+
+    // Função para carregar mais sessões quando o usuário rolar para baixo
+    const loadMoreSessions = useCallback(() => {
+        const uniqueSessions = Array.from(new Set(activeSessions.map(id => id.trim())))
+            .filter(id => !(isNewConversation && id === currentSessionId));
+
+        if (isLoadingMore || visibleSessions.length >= uniqueSessions.length) {
+            return;
+        }
+
+        setIsLoadingMore(true);
+
+        // Simular um pequeno atraso para o carregamento
+        setTimeout(() => {
+            setDisplayLimit(prevLimit => prevLimit + 10); // Carregar mais 10 sessões
+            setIsLoadingMore(false);
+
+            // Verificar se precisamos carregar mais em caso de container grande
+            setTimeout(() => {
+                const container = sessionsContainerRef.current;
+                if (container) {
+                    const { scrollHeight, clientHeight } = container;
+                    // Se após carregar mais, ainda não temos scroll suficiente, carregar mais
+                    if (scrollHeight <= clientHeight && visibleSessions.length < uniqueSessions.length) {
+                        loadMoreSessions();
+                    }
+                }
+            }, 100); // Pequeno delay para garantir que o DOM foi atualizado
+        }, 200);
+    }, [activeSessions, currentSessionId, isNewConversation, isLoadingMore, visibleSessions.length]);
+
+    // Calcular a altura ideal do container baseado na altura da janela
+    useEffect(() => {
+        const calculateContainerHeight = () => {
+            // Calcula uma altura que seja aproximadamente 85% da altura da janela,
+            // mas não menos que 450px para garantir um tamanho adequado
+            const windowHeight = window.innerHeight;
+            const calculatedHeight = Math.max(450, windowHeight * 0.85 - 140); // 140px para cabeçalho e botão
+            setContainerHeight(calculatedHeight);
+        };
+
+        // Calcular na inicialização
+        calculateContainerHeight();
+
+        // Recalcular quando a janela for redimensionada
+        window.addEventListener('resize', calculateContainerHeight);
+        return () => {
+            window.removeEventListener('resize', calculateContainerHeight);
+        };
+    }, []);
+
+    // Adicionar listener de scroll para detectar quando o usuário chega próximo ao fim da lista
+    useEffect(() => {
+        const container = sessionsContainerRef.current;
+        if (!container) return;
+
+        const handleScroll = () => {
+            const { scrollTop, scrollHeight, clientHeight } = container;
+
+            // Se o usuário rolou até próximo do final (80px do fim)
+            if (scrollHeight - scrollTop - clientHeight < 80) {
+                loadMoreSessions();
+            }
+        };
+
+        container.addEventListener('scroll', handleScroll);
+        return () => {
+            container.removeEventListener('scroll', handleScroll);
+        };
+    }, [loadMoreSessions]);
 
     const handleNewSession = async () => {
         // Não criar nova sessão se já estiver criando ou se já há uma conversa nova ou se estiver processando
         if (creating || isCreatingSession || isNewConversation || isProcessing) {
-            console.log("Já existe uma conversa nova, está criando ou processando. Ignorando.");
+            console.log("Já existe uma conversa vazia, está criando ou processando. Ignorando.");
             return;
         }
 
@@ -102,9 +187,6 @@ export default function Sidebar({
 
         // Chamar o seletor de sessão imediatamente, sem delay
         onSessionSelect(trimmedId);
-
-        // Close all sessions modal if open
-        setShowAllChats(false);
     };
 
     // Função simplificada para iniciar edição
@@ -141,10 +223,6 @@ export default function Sidebar({
         }
     };
 
-    const toggleShowAllChats = () => {
-        setShowAllChats(!showAllChats);
-    };
-
     const hasDuplicateSessions = (): boolean => {
         if (activeSessions.length <= 1) return false;
         const uniqueIds = new Set(activeSessions.map(id => id.trim()));
@@ -174,12 +252,6 @@ export default function Sidebar({
     // Filter out duplicate sessions and current empty session if it's new
     const uniqueSessions = Array.from(new Set(activeSessions.map(id => id.trim())))
         .filter(id => !(isNewConversation && id === currentSessionId));
-
-    // Check if we need to show 'See more' button
-    const shouldShowSeeMoreButton = uniqueSessions.length > displayLimit;
-
-    // All sessions for the modal view
-    const allSessions = uniqueSessions;
 
     return (
         <div style={sidebarStyle}>
@@ -215,7 +287,7 @@ export default function Sidebar({
                 </button>
             </div>
 
-            <div style={{ padding: '16px' }}>
+            <div style={{ padding: '16px 16px 24px 16px' }}>
                 <button
                     onClick={handleNewSession}
                     disabled={creating || isCreatingSession || isNewConversation || isProcessing}
@@ -224,16 +296,30 @@ export default function Sidebar({
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        padding: '10px 16px',
+                        padding: '12px 16px',
                         backgroundColor: '#4f46e5',
                         color: 'white',
                         border: 'none',
-                        borderRadius: '8px',
-                        fontWeight: '500',
+                        borderRadius: '10px',
+                        fontWeight: '600',
                         cursor: (creating || isCreatingSession || isNewConversation || isProcessing) ? 'not-allowed' : 'pointer',
                         opacity: (creating || isCreatingSession || isNewConversation || isProcessing) ? 0.7 : 1,
-                        transition: 'background-color 0.2s',
-                        boxShadow: 'var(--shadow-sm)'
+                        transition: 'all 0.2s',
+                        boxShadow: 'var(--shadow-md)',
+                        transform: 'translateY(0)',
+                        fontSize: '15px'
+                    }}
+                    onMouseOver={(e) => {
+                        if (!(creating || isCreatingSession || isNewConversation || isProcessing)) {
+                            e.currentTarget.style.backgroundColor = '#4338ca';
+                            e.currentTarget.style.transform = 'translateY(-1px)';
+                            e.currentTarget.style.boxShadow = 'var(--shadow-lg)';
+                        }
+                    }}
+                    onMouseOut={(e) => {
+                        e.currentTarget.style.backgroundColor = '#4f46e5';
+                        e.currentTarget.style.transform = 'translateY(0)';
+                        e.currentTarget.style.boxShadow = 'var(--shadow-md)';
                     }}
                 >
                     {(creating || isCreatingSession) ? (
@@ -308,11 +394,20 @@ export default function Sidebar({
                 </div>
             )}
 
-            <div style={{
-                flexGrow: 1,
-                overflowY: 'auto',
-                padding: '8px 12px'
-            }}>
+            <div
+                ref={sessionsContainerRef}
+                style={{
+                    height: `${containerHeight}px`, // Altura fixa para garantir scroll
+                    maxHeight: 'calc(100vh - 140px)', // Limitar altura máxima com base na altura da tela
+                    overflowY: 'auto',
+                    padding: '8px 12px',
+                    // Adicionando elementos visuais de delimitação
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '10px',
+                    backgroundColor: isDarkMode ? 'rgba(31, 41, 55, 0.4)' : 'rgba(249, 250, 251, 0.4)',
+                    boxShadow: 'var(--shadow-sm)'
+                }}
+            >
                 {visibleSessions.length === 0 ? (
                     <div style={{
                         textAlign: 'center',
@@ -529,254 +624,119 @@ export default function Sidebar({
                                 </li>
                             );
                         })}
-                    </ul>
-                )}
 
-                {/* Botão "Ver mais" - apenas mostra se houver mais do que o limite */}
-                {shouldShowSeeMoreButton && (
-                    <div style={{
-                        padding: '12px 0',
-                        textAlign: 'center',
-                        borderTop: '1px solid var(--border-subtle)',
-                        marginTop: '8px'
-                    }}>
-                        <button
-                            onClick={toggleShowAllChats}
-                            style={{
-                                background: 'transparent',
-                                border: '1px solid var(--border-color)',
-                                padding: '8px 16px',
-                                borderRadius: '6px',
-                                color: 'var(--text-secondary)',
-                                fontSize: '14px',
-                                cursor: 'pointer',
+                        {/* Indicador de carregamento quando estiver carregando mais chats */}
+                        {isLoadingMore && (
+                            <li style={{
                                 display: 'flex',
-                                alignItems: 'center',
                                 justifyContent: 'center',
-                                gap: '6px',
-                                margin: '0 auto',
-                                transition: 'all 0.2s ease'
-                            }}
-                        >
-                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <circle cx="11" cy="11" r="8"></circle>
-                                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-                                <line x1="11" y1="8" x2="11" y2="14"></line>
-                                <line x1="8" y1="11" x2="14" y2="11"></line>
-                            </svg>
-                            Ver mais ({uniqueSessions.length - displayLimit} restantes)
-                        </button>
-                    </div>
+                                padding: '10px 0'
+                            }}>
+                                <div style={{
+                                    width: '20px',
+                                    height: '20px',
+                                    borderRadius: '50%',
+                                    border: '2px solid var(--border-color)',
+                                    borderTopColor: 'var(--primary-color)',
+                                    animation: 'spin 1s linear infinite'
+                                }}></div>
+                            </li>
+                        )}
+
+                        {/* Espaço adicional no final da lista para garantir que tem área suficiente para scroll */}
+                        {visibleSessions.length > 0 && visibleSessions.length < uniqueSessions.length && (
+                            <li style={{
+                                height: '80px', // Espaço extra maior para garantir que tem área para scroll
+                                opacity: 0
+                            }}></li>
+                        )}
+
+                        {/* Indicador visual de fim da lista */}
+                        {visibleSessions.length > 0 && (
+                            <li style={{
+                                padding: '15px 0',
+                                textAlign: 'center',
+                                fontSize: '13px',
+                                color: 'var(--text-tertiary)',
+                                borderTop: '1px solid var(--border-subtle)',
+                                marginTop: '10px'
+                            }}>
+                                {visibleSessions.length < uniqueSessions.length
+                                    ? 'Role para ver mais conversas'
+                                    : 'Fim da lista de conversas'}
+                            </li>
+                        )}
+                    </ul>
                 )}
             </div>
 
-            {/* Modal para exibir todas as conversas */}
-            {showAllChats && (
+            {/* Ícone do Oráculo (olho) para ocupar o espaço na parte inferior */}
+            <div style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '20px 0',
+                marginTop: 'auto',
+                opacity: 0.8
+            }}>
                 <div style={{
-                    position: 'fixed',
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-                    zIndex: 100,
+                    width: '90px',
+                    height: '90px',
+                    borderRadius: '50%',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    padding: '20px'
+                    backgroundColor: isDarkMode ? 'rgba(55, 65, 81, 0.5)' : 'rgba(243, 244, 246, 0.7)',
+                    boxShadow: isDarkMode ? '0 4px 12px rgba(0, 0, 0, 0.3)' : '0 4px 12px rgba(0, 0, 0, 0.1)',
+                    margin: '0 auto 10px auto',
+                    transition: 'all 0.3s ease'
                 }}>
-                    <div className="chats-modal" style={{
-                        backgroundColor: 'var(--background-elevated)',
-                        borderRadius: '12px',
-                        width: '100%',
-                        maxWidth: '550px',
-                        maxHeight: '80vh',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        boxShadow: 'var(--shadow-lg)'
-                    }}>
-                        <div style={{
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center',
-                            padding: '16px 20px',
-                            borderBottom: '1px solid var(--border-color)'
-                        }}>
-                            <h3 style={{
-                                fontSize: '18px',
-                                fontWeight: '600',
-                                color: 'var(--text-primary)'
-                            }}>
-                                Todas as Conversas ({allSessions.length})
-                            </h3>
-                            <button
-                                onClick={toggleShowAllChats}
-                                style={{
-                                    background: 'transparent',
-                                    border: 'none',
-                                    color: 'var(--text-tertiary)',
-                                    borderRadius: '4px',
-                                    cursor: 'pointer',
-                                    padding: '6px',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center'
-                                }}
-                            >
-                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                    <line x1="18" y1="6" x2="6" y2="18"></line>
-                                    <line x1="6" y1="6" x2="18" y2="18"></line>
-                                </svg>
-                            </button>
-                        </div>
+                    <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="50"
+                        height="50"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke={isDarkMode ? "rgba(255, 255, 255, 0.8)" : "rgba(79, 70, 229, 0.8)"}
+                        strokeWidth="1.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                    >
+                        {/* Olho principal */}
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                        <circle cx="12" cy="12" r="3"></circle>
 
-                        <div style={{
-                            overflowY: 'auto',
-                            flex: 1,
-                            padding: '12px'
-                        }}>
-                            <ul style={{
-                                listStyle: 'none',
-                                padding: 0,
-                                margin: 0,
-                                display: 'flex',
-                                flexDirection: 'column',
-                                gap: '8px'
-                            }}>
-                                {allSessions.map((session) => {
-                                    const trimmedSession = session.trim();
-                                    const isActive = currentSessionId.trim() === trimmedSession && !isNewConversation;
-                                    const sessionInfo = sessionInfos.get(trimmedSession);
-
-                                    return (
-                                        <li key={`all-${trimmedSession}`}>
-                                            <div style={{
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                width: '100%',
-                                                padding: '12px',
-                                                borderRadius: '8px',
-                                                backgroundColor: isActive
-                                                    ? 'var(--background-subtle)'
-                                                    : 'var(--background-main)',
-                                                cursor: 'pointer',
-                                                transition: 'background-color 0.2s',
-                                                border: '1px solid var(--border-subtle)'
-                                            }}
-                                                onClick={() => {
-                                                    handleSelectSession(trimmedSession);
-                                                }}>
-                                                <svg
-                                                    xmlns="http://www.w3.org/2000/svg"
-                                                    width="18"
-                                                    height="18"
-                                                    viewBox="0 0 24 24"
-                                                    fill="none"
-                                                    stroke="currentColor"
-                                                    strokeWidth="2"
-                                                    strokeLinecap="round"
-                                                    strokeLinejoin="round"
-                                                    style={{ marginRight: '12px', color: 'var(--text-tertiary)' }}
-                                                >
-                                                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-                                                </svg>
-                                                <span style={{
-                                                    fontWeight: isActive ? '600' : '500',
-                                                    flex: 1,
-                                                    overflow: 'hidden',
-                                                    textOverflow: 'ellipsis',
-                                                    whiteSpace: 'nowrap',
-                                                    color: 'var(--text-primary)'
-                                                }}>
-                                                    {sessionInfo?.title || `Conversa ${trimmedSession.substring(0, 6)}`}
-                                                </span>
-
-                                                <div style={{
-                                                    display: 'flex',
-                                                    gap: '8px'
-                                                }}>
-                                                    <button
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            toggleShowAllChats(); // Fechar o modal primeiro
-                                                            setTimeout(() => {
-                                                                handleStartEdit(trimmedSession);
-                                                            }, 100);
-                                                        }}
-                                                        style={{
-                                                            padding: '8px',
-                                                            backgroundColor: 'var(--background-subtle)',
-                                                            border: 'none',
-                                                            borderRadius: '4px',
-                                                            cursor: 'pointer',
-                                                            display: 'flex',
-                                                            alignItems: 'center',
-                                                            justifyContent: 'center',
-                                                            color: 'var(--text-tertiary)'
-                                                        }}
-                                                    >
-                                                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-                                                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-                                                        </svg>
-                                                    </button>
-                                                    <button
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            toggleShowAllChats(); // Fechar o modal primeiro
-                                                            setTimeout(() => {
-                                                                setShowDeleteConfirm(trimmedSession);
-                                                            }, 100);
-                                                        }}
-                                                        style={{
-                                                            padding: '8px',
-                                                            backgroundColor: 'var(--background-subtle)',
-                                                            border: 'none',
-                                                            borderRadius: '4px',
-                                                            cursor: 'pointer',
-                                                            display: 'flex',
-                                                            alignItems: 'center',
-                                                            justifyContent: 'center',
-                                                            color: 'var(--text-tertiary)'
-                                                        }}
-                                                    >
-                                                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                                            <polyline points="3 6 5 6 21 6"></polyline>
-                                                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                                                        </svg>
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        </li>
-                                    );
-                                })}
-                            </ul>
-                        </div>
-
-                        <div style={{
-                            padding: '16px',
-                            borderTop: '1px solid var(--border-color)',
-                            textAlign: 'center'
-                        }}>
-                            <button
-                                onClick={toggleShowAllChats}
-                                style={{
-                                    padding: '10px 20px',
-                                    backgroundColor: 'var(--primary-color)',
-                                    color: 'white',
-                                    border: 'none',
-                                    borderRadius: '8px',
-                                    cursor: 'pointer',
-                                    fontWeight: '500',
-                                    width: '100%'
-                                }}
-                            >
-                                Fechar
-                            </button>
-                        </div>
-                    </div>
+                        {/* Raios ao redor do olho */}
+                        <line className="pulse-line" x1="12" y1="5" x2="12" y2="3"></line>
+                        <line className="pulse-line" x1="17" y1="7" x2="19" y2="5"></line>
+                        <line className="pulse-line" x1="19" y1="12" x2="21" y2="12"></line>
+                        <line className="pulse-line" x1="17" y1="17" x2="19" y2="19"></line>
+                        <line className="pulse-line" x1="12" y1="19" x2="12" y2="21"></line>
+                        <line className="pulse-line" x1="7" y1="17" x2="5" y2="19"></line>
+                        <line className="pulse-line" x1="5" y1="12" x2="3" y2="12"></line>
+                        <line className="pulse-line" x1="7" y1="7" x2="5" y2="5"></line>
+                    </svg>
                 </div>
-            )}
+                <div style={{
+                    textAlign: 'center',
+                    color: isDarkMode ? 'rgba(255, 255, 255, 0.6)' : 'rgba(79, 70, 229, 0.7)',
+                    fontSize: '14px',
+                    fontWeight: '500',
+                    letterSpacing: '0.5px'
+                }}>
+                    Oráculo
+                </div>
+                <div style={{
+                    textAlign: 'center',
+                    color: 'var(--text-tertiary)',
+                    fontSize: '12px',
+                    marginTop: '4px',
+                    opacity: 0.7
+                }}>
+                    O que você quer saber?
+                </div>
+            </div>
         </div>
     );
 }

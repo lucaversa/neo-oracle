@@ -326,6 +326,7 @@ export default function ChatPage() {
                 />
 
                 {/* Overlay durante a criação de nova sessão */}
+                {/* Overlay durante a criação de nova sessão - Corrigido */}
                 {isCreatingNewSession && (
                     <div style={{
                         position: 'absolute',
@@ -344,19 +345,37 @@ export default function ChatPage() {
                         <div style={{
                             backgroundColor: 'var(--background-elevated)',
                             borderRadius: '12px',
-                            padding: '20px',
+                            padding: '24px',
                             boxShadow: 'var(--shadow-lg)',
                             display: 'flex',
                             flexDirection: 'column',
                             alignItems: 'center',
-                            gap: '16px'
+                            justifyContent: 'center',
+                            gap: '16px',
+                            minWidth: '280px',
+                            textAlign: 'center'
                         }}>
-                            <div className="w-12 h-12 border-4 border-border-color border-t-primary-color rounded-full animate-spin"></div>
+                            <div style={{
+                                width: '48px',
+                                height: '48px',
+                                borderRadius: '50%',
+                                borderWidth: '4px',
+                                borderStyle: 'solid',
+                                borderColor: 'var(--border-color)',
+                                borderTopColor: 'var(--primary-color)',
+                                animation: 'spin 1s linear infinite',
+                                marginBottom: '8px'
+                            }}></div>
                             <p style={{
                                 color: 'var(--text-primary)',
                                 textAlign: 'center',
                                 width: '100%',
-                                fontWeight: '500'
+                                fontWeight: '500',
+                                fontSize: '16px',
+                                margin: 0,
+                                padding: 0,
+                                lineHeight: '24px',
+                                letterSpacing: '0.1px'
                             }}>Criando nova conversa...</p>
                         </div>
                     </div>

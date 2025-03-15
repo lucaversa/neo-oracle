@@ -1,11 +1,14 @@
 'use client'
 
-import { useState, FormEvent, useEffect } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useState, FormEvent, useEffect, Suspense } from 'react';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
 
-export default function Login() {
+// Componente separado que usa useSearchParams
+function LoginContent() {
+    // Importamos useSearchParams() somente neste componente
+    const { useSearchParams } = require('next/navigation');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [loading, setLoading] = useState(false);
@@ -176,6 +179,7 @@ export default function Login() {
                 transition: 'background-color 0.3s, box-shadow 0.3s',
                 animation: 'fadeIn 0.5s ease-out'
             }}>
+                {/* Resto do componente de login... */}
                 {/* Cabeçalho */}
                 <div style={{
                     padding: '40px 30px 30px',
@@ -293,6 +297,7 @@ export default function Login() {
                     )}
 
                     <form onSubmit={handleLogin}>
+                        {/* Conteúdo do formulário... */}
                         <div style={{ marginBottom: '20px' }}>
                             <label
                                 htmlFor="email"
@@ -550,5 +555,34 @@ export default function Login() {
                 </div>
             </div>
         </div>
+    );
+}
+
+// Componente principal que envolve o conteúdo em um Suspense
+export default function Login() {
+    return (
+        <Suspense fallback={
+            <div style={{
+                height: '100vh',
+                width: '100%',
+                display: 'flex',
+                justifyContent: 'center',
+                alignItems: 'center',
+                backgroundColor: 'var(--background-main)'
+            }}>
+                <div style={{
+                    width: '40px',
+                    height: '40px',
+                    borderRadius: '50%',
+                    borderWidth: '4px',
+                    borderStyle: 'solid',
+                    borderColor: 'var(--border-color)',
+                    borderTopColor: 'var(--primary-color)',
+                    animation: 'spin 1s linear infinite'
+                }}></div>
+            </div>
+        }>
+            <LoginContent />
+        </Suspense>
     );
 }

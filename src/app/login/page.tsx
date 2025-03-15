@@ -50,6 +50,7 @@ export default function Login() {
             return;
         }
 
+        // Correção para o bloco catch do handleLogin
         try {
             setError('');
             setLoading(true);
@@ -81,19 +82,29 @@ export default function Login() {
             // Redirecionar para a página de chat
             router.push('/chat');
 
-        } catch (err: any) {
+        } catch (err: unknown) {
             console.error('Erro ao processar login:', err);
 
+            // Criando uma interface para tipos de erro que podem ter propriedades específicas
+            interface ExtendedError {
+                message?: string;
+                code?: string;
+                status?: number;
+            }
+
+            // Converter para o tipo extendido
+            const error = err as ExtendedError;
+
             // Tratamento mais detalhado de erros de exceção
-            if (err.message?.includes('network') || err.code === 'NETWORK_ERROR' || !navigator.onLine) {
+            if (error.message?.includes('network') || error.code === 'NETWORK_ERROR' || !navigator.onLine) {
                 setError('Erro de conexão. Verifique sua internet e tente novamente.');
-            } else if (err.message?.includes('timeout') || err.code === 'TIMEOUT') {
+            } else if (error.message?.includes('timeout') || error.code === 'TIMEOUT') {
                 setError('O servidor demorou para responder. Tente novamente em alguns instantes.');
-            } else if (err.message?.includes('server') || err.status >= 500) {
+            } else if (error.message?.includes('server') || error.status && error.status >= 500) {
                 setError('Erro no servidor. Nossa equipe foi notificada. Tente novamente mais tarde.');
-            } else if (err.status === 429) {
+            } else if (error.status === 429) {
                 setError('Muitas tentativas. Aguarde alguns minutos antes de tentar novamente.');
-            } else if (err.status === 403) {
+            } else if (error.status === 403) {
                 setError('Acesso negado. Verifique se você tem permissão para acessar o sistema.');
             } else {
                 setError('Ocorreu um erro durante o login. Por favor, tente novamente.');

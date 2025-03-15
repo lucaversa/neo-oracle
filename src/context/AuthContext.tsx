@@ -5,6 +5,11 @@ import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { User } from '@supabase/supabase-js';
 
+// Interface para erros com mensagem
+interface ErrorWithMessage {
+    message?: string;
+}
+
 type AuthContextType = {
     user: User | null;
     loading: boolean;
@@ -83,10 +88,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             // Login bem-sucedido
             setUser(data.user);
             return { success: true };
-        } catch (err: any) {
-            console.error('Exceção durante login:', err.message);
-            setError(err.message || 'Erro desconhecido no login');
-            return { success: false, error: err.message || 'Erro desconhecido no login' };
+        } catch (err: unknown) {
+            const error = err as ErrorWithMessage;
+            const errorMessage = error.message || 'Erro desconhecido no login';
+
+            console.error('Exceção durante login:', errorMessage);
+            setError(errorMessage);
+            return { success: false, error: errorMessage };
         } finally {
             setLoading(false);
         }
@@ -99,8 +107,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             await supabase.auth.signOut();
             setUser(null);
             router.push('/login');
-        } catch (err: any) {
-            console.error('Erro ao fazer logout:', err.message);
+        } catch (err: unknown) {
+            const error = err as ErrorWithMessage;
+            console.error('Erro ao fazer logout:', error.message || 'Erro desconhecido');
         } finally {
             setLoading(false);
         }

@@ -13,7 +13,6 @@ interface ChatBubbleProps {
 export default function ChatBubble({
     message,
     userName = '',
-    streamingContent = '',
     isStreaming = false
 }: ChatBubbleProps) {
     const isUser = message.type === 'human';

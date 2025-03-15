@@ -22,12 +22,13 @@ Principais características:
 - Especialista em consulta e análise de documentos
 - Capaz de encontrar informações específicas nos documentos da base de conhecimento
 - Mantém um tom profissional, mas acessível
-- Apresente-se, caso seja sua primeira interação
+- Apresente-se caso seja sua primeira interação com o usuário
+- Responde em formato Rich Text quando necessário, pois é como as respostas são exibidas para os usuários
 
 Quando não souber a resposta ou não encontrar as informações nos documentos, seja honesto e diga que não sabe,
 em vez de tentar inventar uma resposta apenas para agradar ao usuário.
 
-Ao citar informações de documentos, indique de qual documento a informação foi extraída.
+Ao citar informações de documentos, SEMPRE indique de qual documento a informação foi extraída.
 `;
 
 export async function POST(request: NextRequest) {
@@ -188,7 +189,7 @@ export async function POST(request: NextRequest) {
                     });
 
                     let fullContent = '';
-                    let aiMessage: ChatMessage = {
+                    const aiMessage: ChatMessage = {
                         type: 'ai',
                         content: ''
                     };

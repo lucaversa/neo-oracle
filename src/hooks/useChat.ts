@@ -199,31 +199,6 @@ export function useChat(userId?: string): UseChatReturn {
         setLastMessageTimestamp(Date.now());
     };
 
-    // Carregar o título da sessão a partir do banco de dados
-    const loadSessionTitle = async (sessionId: string) => {
-        if (!userId || !sessionId) return 'Nova Conversa';
-
-        try {
-            const trimmedSessionId = sessionId.trim();
-            const { data, error } = await supabase
-                .from('user_chat_sessions')
-                .select('title')
-                .eq('user_id', userId)
-                .eq('session_id', trimmedSessionId)
-                .single();
-
-            if (error || !data) {
-                console.log('Título não encontrado para sessão:', trimmedSessionId);
-                return 'Nova Conversa';
-            }
-
-            return data.title;
-        } catch (err) {
-            console.error('Erro ao carregar título da sessão:', err);
-            return 'Nova Conversa';
-        }
-    };
-
     // Renomear uma sessão de chat
     const renameSession = async (sessionId: string, newTitle: string): Promise<boolean> => {
         if (!userId || !sessionId || !newTitle.trim()) {
@@ -253,12 +228,17 @@ export function useChat(userId?: string): UseChatReturn {
             }
 
             // Depois fazer a atualização no banco de dados
-            const { data, error } = await supabase
-                .from('user_chat_sessions')
-                .update({ title: newTitle.trim() })
-                .eq('user_id', userId)
-                .eq('session_id', trimmedSessionId)
-                .select();
+            const { data: vectorStoreData, error } = await supabase
+                .from('vector_stores')
+                .select('vector_store_id')
+                .eq('is_active', true)
+                .eq('is_searchable', true);
+
+            if (error) {
+                console.error('Erro ao carregar vector stores pesquisáveis:', error);
+            } else if (vectorStoreData && Array.isArray(vectorStoreData)) {
+                setSearchableVectorStores(vectorStoreData.map(store => store.vector_store_id));
+            }
 
             if (error) {
                 console.error('Erro ao renomear sessão no banco de dados:', error);
@@ -438,16 +418,6 @@ export function useChat(userId?: string): UseChatReturn {
             setLoading(false);
         }
     }, [isNewConversation, userId, sessionManager.currentSessionId]);
-
-    // Carregar sessões ativas
-    const loadActiveSessions = async () => {
-        if (!userId) {
-            console.log('Usuário não definido, não é possível carregar sessões');
-            return [];
-        }
-
-        return await loadUserSessions();
-    };
 
     // Função para atualizar a lista de sessões ativas
     const refreshActiveSessions = useCallback(async () => {
@@ -823,7 +793,7 @@ export function useChat(userId?: string): UseChatReturn {
                                     console.log('Resposta completa recebida');
                                     break;
                                 }
-                            } catch (e) {
+                            } catch {
                                 // Se não for JSON, apenas logar para debug
                                 console.log('Dados não-JSON recebidos:', data);
                             }
@@ -887,9 +857,10 @@ export function useChat(userId?: string): UseChatReturn {
                 setIsProcessing(false);
                 setStreamingContent('');
             }
-        } catch (err: any) {
+        } catch (err: unknown) {
             console.error('Erro ao enviar mensagem:', err);
-            setError(err.message || 'Falha ao enviar mensagem');
+            const errorMessage = err instanceof Error ? err.message : 'Falha ao enviar mensagem';
+            setError(errorMessage);
             setIsProcessing(false);
             setStreamingContent('');
         }

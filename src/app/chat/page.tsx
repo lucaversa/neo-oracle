@@ -3,7 +3,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
-import { useTheme } from '@/context/ThemeContext';
 import { useChat } from '@/hooks/useChat';
 import ChatBubble from '@/components/chat/ChatBubble';
 import ChatInput from '@/components/chat/ChatInput';
@@ -16,7 +15,6 @@ import ThinkingIndicator from '@/components/chat/ThinkingIndicator';
 export default function ChatPage() {
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const { user, loading: authLoading, logout } = useAuth();
-    const { isDarkMode } = useTheme();
     const router = useRouter();
     const chatContainerRef = useRef<HTMLDivElement>(null);
     const creatingSessionRef = useRef<boolean>(false);
@@ -47,13 +45,10 @@ export default function ChatPage() {
         isNewConversation,
         lastMessageTimestamp,
         resetProcessingState,
-        updateLastMessageTimestamp,
         renameSession,
         deleteSession,
         hasEmptyChat,
         streamingContent,
-        searchableVectorStores,
-        setSearchableVectorStores
     } = useChat(user?.id);
 
     // Rolar para o final da conversa quando novas mensagens chegarem ou ao receber conteúdo streaming
@@ -192,6 +187,7 @@ export default function ChatPage() {
     };
 
     // Função para renomear uma sessão de chat
+    // Corrigindo a função handleRenameSession com as linhas problemáticas
     const handleRenameSession = async (sessionId: string, newTitle: string) => {
         // Não tentamos mais modificar o estado local diretamente
         // Apenas delegamos para a função do hook
@@ -201,13 +197,13 @@ export default function ChatPage() {
 
             if (!success) {
                 // Caso queira exibir alguma mensagem de erro
-                setLocalError && setLocalError("Falha ao renomear a sessão. Tente novamente.");
+                setLocalError("Falha ao renomear a sessão. Tente novamente.");
             }
 
             return success;
         } catch (error) {
             console.error("Erro ao renomear sessão:", error);
-            setLocalError && setLocalError("Erro ao renomear sessão: " + String(error));
+            setLocalError("Erro ao renomear sessão: " + String(error));
             return false;
         }
     };

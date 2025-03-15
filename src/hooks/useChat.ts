@@ -100,9 +100,63 @@ export function useChat(userId?: string): UseChatReturn {
         setLastMessageTimestamp(Date.now());
     }, []);
 
-    // Carregar informações das sessões de um usuário específico
-    // Modifique a função loadUserSessions para ordenar por created_at em vez de updated_at
+    // Estratégia para recuperar uma resposta do banco caso o streaming falhe
+    const tryRecoverResponse = useCallback(async (sessionId: string) => {
+        if (!userId || !sessionId) return false;
 
+        console.log('Tentando recuperar resposta do banco de dados para a sessão:', sessionId);
+
+        try {
+            // Buscar as mensagens mais recentes do banco de dados
+            const { data, error } = await supabase
+                .from('user_chat_sessions')
+                .select('messages')
+                .eq('session_id', sessionId.trim())
+                .eq('user_id', userId)
+                .maybeSingle();
+
+            if (error) {
+                console.error('Erro ao recuperar mensagens:', error);
+                return false;
+            }
+
+            if (!data || !data.messages || !Array.isArray(data.messages)) {
+                console.log('Nenhuma mensagem encontrada para recuperação');
+                return false;
+            }
+
+            const messagesFromDB = data.messages;
+            const currentMessages = messagesRef.current;
+
+            // Se tem mais mensagens no banco do que temos localmente
+            if (messagesFromDB.length > currentMessages.length) {
+                console.log('Encontrada mensagem adicional no banco de dados!');
+
+                // Pegue a última mensagem do banco
+                const lastMessageFromDB = messagesFromDB[messagesFromDB.length - 1];
+
+                // Se a última mensagem for do AI e não estiver nas mensagens atuais
+                if (lastMessageFromDB.type === 'ai') {
+                    console.log('Recuperando resposta do AI do banco de dados');
+
+                    // Atualizar mensagens com a resposta recuperada
+                    setMessages(messagesFromDB);
+
+                    // Atualize também a referência
+                    messagesRef.current = messagesFromDB;
+
+                    return true;
+                }
+            }
+
+            return false;
+        } catch (err) {
+            console.error('Erro ao tentar recuperar resposta:', err);
+            return false;
+        }
+    }, [userId]);
+
+    // Carregar informações das sessões de um usuário específico
     const loadUserSessions = async () => {
         if (!userId) return [];
 
@@ -166,9 +220,6 @@ export function useChat(userId?: string): UseChatReturn {
             return [];
         }
     };
-
-    // E também modifique a função refreshActiveSessions se necessário (importante garantir que 
-    // loadUserSessions seja a única função que está fazendo a ordenação)
 
     // Adicionar uma função para atualizar explicitamente o título de uma sessão no estado local
     const updateSessionTitle = (sessionId: string, title: string) => {
@@ -240,8 +291,14 @@ export function useChat(userId?: string): UseChatReturn {
                 setSearchableVectorStores(vectorStoreData.map(store => store.vector_store_id));
             }
 
-            if (error) {
-                console.error('Erro ao renomear sessão no banco de dados:', error);
+            const { error: updateError } = await supabase
+                .from('user_chat_sessions')
+                .update({ title: newTitle.trim() })
+                .eq('session_id', trimmedSessionId)
+                .eq('user_id', userId);
+
+            if (updateError) {
+                console.error('Erro ao renomear sessão no banco de dados:', updateError);
                 // Mesmo com erro no banco, mantemos o título atualizado no frontend
                 return true; // Retorna true porque o frontend foi atualizado
             }
@@ -622,8 +679,7 @@ export function useChat(userId?: string): UseChatReturn {
         }
     };
 
-    // Versão otimizada da função sendMessage para useChat.ts
-
+    // Função para enviar mensagem e processar resposta
     const sendMessage = async (content: string): Promise<void> => {
         if (!sessionId || !content.trim()) {
             console.log('Não é possível enviar: sessão ou conteúdo inválido');
@@ -738,70 +794,100 @@ export function useChat(userId?: string): UseChatReturn {
                 // Adicionar a mensagem AI vazia imediatamente, não esperamos pelo primeiro chunk
                 addAiMessage();
 
-                // MODIFICADO: Adicionado timeout para cada chunk
-                const readWithTimeout = async () => {
-                    try {
-                        // Adicionando timeout para cada operação de leitura
-                        const chunkPromise = reader.read();
-                        const timeoutPromise = new Promise((_, reject) =>
-                            setTimeout(() => reject(new Error("Timeout ao ler chunk")), 15000)
-                        );
-
-                        return await Promise.race([chunkPromise, timeoutPromise]) as ReadableStreamReadResult<Uint8Array>;
-                    } catch (err) {
-                        // Se houver timeout, encerrar o stream
-                        console.error("Timeout na leitura do chunk:", err);
-                        throw new Error("A leitura do stream demorou muito. A resposta pode estar incompleta.");
-                    }
-                };
-
+                // MODIFICADO: Leitura mais robusta do stream
                 while (true) {
-                    // Usar a função de leitura com timeout
-                    const { done, value } = await readWithTimeout();
+                    try {
+                        const { done, value } = await reader.read();
 
-                    if (done) {
-                        console.log('Stream completo');
-                        break;
-                    }
+                        if (done) {
+                            console.log('Stream completo');
+                            break;
+                        }
 
-                    // Decodificar o chunk
-                    const chunk = decoder.decode(value, { stream: true });
-                    console.log('Chunk recebido:', chunk.length > 100 ? chunk.substring(0, 100) + "..." : chunk);
+                        // Decodificar o chunk
+                        const chunk = decoder.decode(value, { stream: true });
+                        console.log('Chunk recebido:', chunk.length > 100 ? chunk.substring(0, 100) + "..." : chunk);
 
-                    // Processar o chunk como texto (pode conter múltiplas linhas de eventos)
-                    const lines = chunk.split('\n');
-                    for (let i = 0; i < lines.length; i++) {
-                        const line = lines[i].trim();
+                        // Processar o chunk como texto (pode conter múltiplas linhas de eventos)
+                        const lines = chunk.split('\n');
+                        for (let i = 0; i < lines.length; i++) {
+                            const line = lines[i].trim();
 
-                        // Pular linhas vazias
-                        if (!line) continue;
+                            // Pular linhas vazias
+                            if (!line) continue;
 
-                        // Verificar se é uma linha de dados
-                        if (line.startsWith('data: ')) {
-                            const data = line.substring(6);
+                            // Verificar se é uma linha de dados
+                            if (line.startsWith('data: ')) {
+                                const data = line.substring(6);
 
-                            try {
-                                // Tentar parsear como JSON
-                                const jsonData = JSON.parse(data);
+                                try {
+                                    // Tentar parsear como JSON
+                                    const jsonData = JSON.parse(data);
 
-                                // Se temos um delta de texto
-                                if (jsonData.text !== undefined || jsonData.full !== undefined) {
-                                    // Atualizar o conteúdo acumulado se temos 'full'
-                                    if (jsonData.full !== undefined) {
-                                        accumulatedContent = jsonData.full;
+                                    // Se temos um delta de texto
+                                    if (jsonData.text !== undefined || jsonData.full !== undefined) {
+                                        // Atualizar o conteúdo acumulado se temos 'full'
+                                        if (jsonData.full !== undefined) {
+                                            accumulatedContent = jsonData.full;
+                                        }
+                                        // Ou adicionar o delta se temos apenas 'text'
+                                        else if (jsonData.text !== undefined) {
+                                            accumulatedContent += jsonData.text;
+                                        }
+
+                                        // Atualizar o estado de streaming para debug
+                                        setStreamingContent(accumulatedContent);
+
+                                        // Atualizar a última mensagem do AI com o conteúdo atual
+                                        setMessages(prev => {
+                                            const newMessages = [...prev];
+                                            // Atualizar a última mensagem AI
+                                            for (let i = newMessages.length - 1; i >= 0; i--) {
+                                                if (newMessages[i].type === 'ai') {
+                                                    newMessages[i].content = accumulatedContent;
+                                                    break;
+                                                }
+                                            }
+                                            return newMessages;
+                                        });
                                     }
-                                    // Ou adicionar o delta se temos apenas 'text'
-                                    else if (jsonData.text !== undefined) {
-                                        accumulatedContent += jsonData.text;
+
+                                    // Se recebemos "Done", finalizamos o processamento
+                                    if (data === 'Done' || jsonData.done) {
+                                        console.log('Resposta completa recebida');
+                                        break;
                                     }
+                                } catch {
+                                    // Se não for JSON, apenas logar para debug
+                                    console.log('Dados não-JSON recebidos:', data);
+                                }
+                            }
+                            // Verificar eventos de erro
+                            else if (line.startsWith('event: error')) {
+                                // A próxima linha deve conter os dados do erro
+                                if (i + 1 < lines.length && lines[i + 1].startsWith('data: ')) {
+                                    const errorData = lines[i + 1].substring(6);
+                                    console.error('Erro no stream:', errorData);
+                                    throw new Error(JSON.parse(errorData).error || 'Erro no stream');
+                                }
+                            }
+                        }
+                    } catch (streamError) {
+                        // Se houver erro na leitura do stream mas já temos conteúdo acumulado
+                        // vamos apenas logar o erro e continuar com o que temos
+                        if (accumulatedContent.length > 0) {
+                            console.error('Erro durante a leitura do stream, mas conteúdo já foi recebido:', streamError);
+                            console.log('Conteúdo acumulado até o momento:', accumulatedContent.length, 'caracteres');
 
-                                    // Atualizar o estado de streaming para debug
-                                    setStreamingContent(accumulatedContent);
+                            // Adicionar mensagem de aviso que a resposta pode estar incompleta
+                            if (accumulatedContent.length > 100) {
+                                const warningMessage = "\n\n[Nota: A resposta pode estar incompleta devido a um erro de conexão]";
+                                if (!accumulatedContent.includes(warningMessage)) {
+                                    accumulatedContent += warningMessage;
 
-                                    // Atualizar a última mensagem do AI com o conteúdo atual
+                                    // Atualizar a última mensagem do AI com o aviso
                                     setMessages(prev => {
                                         const newMessages = [...prev];
-                                        // Atualizar a última mensagem AI
                                         for (let i = newMessages.length - 1; i >= 0; i--) {
                                             if (newMessages[i].type === 'ai') {
                                                 newMessages[i].content = accumulatedContent;
@@ -811,25 +897,11 @@ export function useChat(userId?: string): UseChatReturn {
                                         return newMessages;
                                     });
                                 }
-
-                                // Se recebemos "Done", finalizamos o processamento
-                                if (data === 'Done' || jsonData.done) {
-                                    console.log('Resposta completa recebida');
-                                    break;
-                                }
-                            } catch {
-                                // Se não for JSON, apenas logar para debug
-                                console.log('Dados não-JSON recebidos:', data);
                             }
-                        }
-                        // Verificar eventos de erro
-                        else if (line.startsWith('event: error')) {
-                            // A próxima linha deve conter os dados do erro
-                            if (i + 1 < lines.length && lines[i + 1].startsWith('data: ')) {
-                                const errorData = lines[i + 1].substring(6);
-                                console.error('Erro no stream:', errorData);
-                                throw new Error(JSON.parse(errorData).error || 'Erro no stream');
-                            }
+                            break;
+                        } else {
+                            // Se não temos conteúdo, propagar o erro
+                            throw streamError;
                         }
                     }
                 }
@@ -855,9 +927,45 @@ export function useChat(userId?: string): UseChatReturn {
 
                 setError(errorMessage);
 
-                // Adicionar uma mensagem de erro visível no chat
+                // Tente recuperar a resposta do banco de dados se o streaming falhou
+                if (error instanceof Error &&
+                    (error.message.includes('stream') ||
+                        error.message.includes('timeout') ||
+                        error.message.includes('demor'))) {
+
+                    console.log('Erro de streaming, tentando recuperar resposta...');
+
+                    // Adicionar pequeno delay para dar tempo ao banco de salvar
+                    setTimeout(async () => {
+                        const recovered = await tryRecoverResponse(trimmedSessionId);
+                        if (recovered) {
+                            console.log('✅ Resposta recuperada com sucesso do banco de dados!');
+                            // Atualizar UI para mostrar que recuperamos
+                            setError('Streaming interrompido, mas a resposta foi recuperada do servidor.');
+                        } else {
+                            console.log('❌ Não foi possível recuperar a resposta');
+
+                            // Adicionar uma mensagem de erro visível no chat apenas se não recuperamos
+                            setMessages(prev => {
+                                // Só adicionar se a última mensagem for do usuário
+                                if (prev.length > 0 && prev[prev.length - 1].type === 'human') {
+                                    return [...prev, {
+                                        type: 'ai',
+                                        content: `${errorMessage} (${new Date().toLocaleTimeString()})`
+                                    }];
+                                }
+                                return prev;
+                            });
+                        }
+                        setIsProcessing(false);
+                    }, 2000);
+
+                    // Não resetamos isProcessing aqui, vamos deixar o timer acima fazer isso
+                    return;
+                }
+
+                // Se não tentamos recuperar, adicionamos a mensagem de erro e resetamos normalmente
                 setMessages(prev => {
-                    // Só adicionar se a última mensagem for do usuário
                     if (prev.length > 0 && prev[prev.length - 1].type === 'human') {
                         return [...prev, {
                             type: 'ai',
@@ -899,6 +1007,71 @@ export function useChat(userId?: string): UseChatReturn {
             refreshActiveSessions();
         }
     }, [lastMessageTimestamp, refreshActiveSessions]);
+
+    // Efeito para verificar periodicamente se há novas mensagens na sessão atual
+    // Isso é útil para recuperar respostas que foram salvas no banco mas não foram
+    // entregues pelo streaming devido a erros, recargas da página, etc.
+    useEffect(() => {
+        // Só ative quando temos uma sessão e mensagens, e não estamos em processamento
+        if (!sessionId || messages.length === 0 || isProcessing || !userId) return;
+
+        // Função para verificar mensagens no banco
+        const checkForNewMessages = async () => {
+            // Se estamos processando ou a sessão mudou, não verificar
+            if (isProcessing || sessionId !== sessionManager.currentSessionId) return;
+
+            try {
+                // Verificar se a última mensagem é do usuário (esperando resposta)
+                const lastMessage = messages[messages.length - 1];
+                const isAwaitingResponse = lastMessage?.type === 'human';
+
+                // Se não estamos aguardando resposta, não precisa verificar
+                if (!isAwaitingResponse) return;
+
+                // Buscar mensagens do banco
+                const { data, error } = await supabase
+                    .from('user_chat_sessions')
+                    .select('messages')
+                    .eq('session_id', sessionId.trim())
+                    .eq('user_id', userId)
+                    .maybeSingle();
+
+                if (error) {
+                    console.error('Erro ao verificar mensagens do banco:', error);
+                    return;
+                }
+
+                if (!data || !data.messages || !Array.isArray(data.messages)) {
+                    return;
+                }
+
+                const dbMessages = data.messages;
+
+                // Se o banco tem mais mensagens do que temos localmente
+                if (dbMessages.length > messages.length) {
+                    // E a última mensagem do banco é do AI
+                    const lastDbMessage = dbMessages[dbMessages.length - 1];
+                    if (lastDbMessage.type === 'ai') {
+                        console.log('Encontrada resposta do AI no banco que não temos localmente');
+
+                        // Atualizar as mensagens com o que veio do banco
+                        setMessages(dbMessages);
+                        messagesRef.current = dbMessages;
+                    }
+                }
+            } catch (err) {
+                console.error('Erro ao verificar novas mensagens:', err);
+            }
+        };
+
+        // Verificar imediatamente ao carregar
+        checkForNewMessages();
+
+        // Configurar verificação periódica (a cada 10 segundos)
+        const intervalId = setInterval(checkForNewMessages, 10000);
+
+        return () => clearInterval(intervalId);
+    }, [sessionId, messages.length, isProcessing, userId, sessionManager.currentSessionId, supabase]);
 
     // Inicializar o hook
     useEffect(() => {

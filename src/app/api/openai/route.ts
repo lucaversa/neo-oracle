@@ -34,6 +34,40 @@ em vez de tentar inventar uma resposta apenas para agradar ao usuário.
 Ao citar informações de documentos, SEMPRE indique de qual documento a informação foi extraída.
 `;
 
+// Implementar função para salvar no banco de dados de forma assíncrona
+const saveMessageToDatabase = async (trimmedSessionId: string, userId: string, aiMessage: ChatMessage) => {
+    try {
+        // Verificar se a sessão existe
+        const { data: sessionData, error: sessionError } = await supabase
+            .from('user_chat_sessions')
+            .select('messages')
+            .eq('session_id', trimmedSessionId)
+            .eq('user_id', userId)
+            .maybeSingle();
+
+        if (!sessionError && sessionData) {
+            // Atualizar sessão existente com a resposta da AI
+            const existingMessages = sessionData.messages || [];
+            const updatedMessages = [...existingMessages, aiMessage];
+
+            await supabase
+                .from('user_chat_sessions')
+                .update({
+                    messages: updatedMessages,
+                    updated_at: new Date().toISOString()
+                })
+                .eq('session_id', trimmedSessionId)
+                .eq('user_id', userId);
+
+            console.log(`Mensagem AI salva no banco para a sessão ${trimmedSessionId}`);
+        } else {
+            console.error('Sessão não encontrada para salvar resposta AI');
+        }
+    } catch (dbError) {
+        console.error("Erro no banco de dados ao salvar resposta AI:", dbError);
+    }
+};
+
 export async function POST(request: NextRequest) {
     try {
         // Verificar se o cliente OpenAI está disponível
@@ -227,32 +261,12 @@ export async function POST(request: NextRequest) {
                 // Completar a mensagem do AI
                 aiMessage.content = fullContent;
 
-                // Salvar a resposta completa no banco
-                try {
-                    // Verificar se a sessão existe novamente
-                    const { data: sessionData, error: sessionError } = await supabase
-                        .from('user_chat_sessions')
-                        .select('messages')
-                        .eq('session_id', trimmedSessionId)
-                        .eq('user_id', userId)
-                        .maybeSingle();
-
-                    if (!sessionError && sessionData) {
-                        // Atualizar sessão existente com a resposta da AI
-                        const existingMessages = sessionData.messages || [];
-                        const updatedMessages = [...existingMessages, aiMessage];
-
-                        await supabase
-                            .from('user_chat_sessions')
-                            .update({
-                                messages: updatedMessages,
-                                updated_at: new Date().toISOString()
-                            })
-                            .eq('session_id', trimmedSessionId)
-                            .eq('user_id', userId);
-                    }
-                } catch (dbError) {
-                    console.error("Erro no banco de dados ao salvar resposta AI:", dbError);
+                // Salvar a resposta completa no banco de forma assíncrona
+                // em vez de aguardar o salvamento, vamos continuar o processamento
+                if (fullContent.length > 0) {
+                    // Não aguardamos a Promise para não atrasar o stream
+                    saveMessageToDatabase(trimmedSessionId, userId, aiMessage)
+                        .catch(err => console.error("Erro ao salvar mensagem:", err));
                 }
 
                 // Finalizar o stream

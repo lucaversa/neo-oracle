@@ -1,14 +1,12 @@
 'use client'
 
 import { useState, FormEvent, useEffect, Suspense } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
 
-// Componente separado que usa useSearchParams
+// Componente que usa useSearchParams
 function LoginContent() {
-    // Importamos useSearchParams() somente neste componente
-    const { useSearchParams } = require('next/navigation');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [loading, setLoading] = useState(false);
@@ -53,7 +51,6 @@ function LoginContent() {
             return;
         }
 
-        // Correção para o bloco catch do handleLogin
         try {
             setError('');
             setLoading(true);
@@ -179,7 +176,6 @@ function LoginContent() {
                 transition: 'background-color 0.3s, box-shadow 0.3s',
                 animation: 'fadeIn 0.5s ease-out'
             }}>
-                {/* Resto do componente de login... */}
                 {/* Cabeçalho */}
                 <div style={{
                     padding: '40px 30px 30px',
@@ -297,7 +293,6 @@ function LoginContent() {
                     )}
 
                     <form onSubmit={handleLogin}>
-                        {/* Conteúdo do formulário... */}
                         <div style={{ marginBottom: '20px' }}>
                             <label
                                 htmlFor="email"

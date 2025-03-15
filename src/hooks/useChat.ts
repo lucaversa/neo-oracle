@@ -622,9 +622,7 @@ export function useChat(userId?: string): UseChatReturn {
         }
     };
 
-    // Substitua apenas a função sendMessage no arquivo src/hooks/useChat.ts
-
-    // Substitua apenas a função sendMessage no arquivo src/hooks/useChat.ts
+    // Versão otimizada da função sendMessage para useChat.ts
 
     const sendMessage = async (content: string): Promise<void> => {
         if (!sessionId || !content.trim()) {
@@ -688,11 +686,11 @@ export function useChat(userId?: string): UseChatReturn {
             // Obter todas as mensagens anteriores para manter o contexto
             const allMessages = [...messagesRef.current, userMessage];
 
-            try {
-                // Configurar um timeout usando AbortController
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 180000); // 3 minutos de timeout
+            // MODIFICADO: Reduzido o timeout para 60 segundos (de 180) para melhor compatibilidade
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 segundos de timeout
 
+            try {
                 // Iniciar uma solicitação fetch para obter o stream
                 const response = await fetch('/api/openai', {
                     method: 'POST',
@@ -711,8 +709,16 @@ export function useChat(userId?: string): UseChatReturn {
                 // Limpar o timeout se a resposta chegou
                 clearTimeout(timeoutId);
 
-                if (!response.ok || !response.body) {
+                if (!response.ok) {
+                    // MODIFICADO: Tratamento específico para código 504
+                    if (response.status === 504) {
+                        throw new Error("O servidor levou muito tempo para responder (timeout). Tente uma pergunta mais curta ou tente novamente mais tarde.");
+                    }
                     throw new Error(`Erro HTTP: ${response.status}`);
+                }
+
+                if (!response.body) {
+                    throw new Error("Resposta sem corpo do servidor");
                 }
 
                 // Inicializar mensagem do AI vazia em real-time
@@ -732,8 +738,26 @@ export function useChat(userId?: string): UseChatReturn {
                 // Adicionar a mensagem AI vazia imediatamente, não esperamos pelo primeiro chunk
                 addAiMessage();
 
+                // MODIFICADO: Adicionado timeout para cada chunk
+                const readWithTimeout = async () => {
+                    try {
+                        // Adicionando timeout para cada operação de leitura
+                        const chunkPromise = reader.read();
+                        const timeoutPromise = new Promise((_, reject) =>
+                            setTimeout(() => reject(new Error("Timeout ao ler chunk")), 15000)
+                        );
+
+                        return await Promise.race([chunkPromise, timeoutPromise]) as ReadableStreamReadResult<Uint8Array>;
+                    } catch (err) {
+                        // Se houver timeout, encerrar o stream
+                        console.error("Timeout na leitura do chunk:", err);
+                        throw new Error("A leitura do stream demorou muito. A resposta pode estar incompleta.");
+                    }
+                };
+
                 while (true) {
-                    const { done, value } = await reader.read();
+                    // Usar a função de leitura com timeout
+                    const { done, value } = await readWithTimeout();
 
                     if (done) {
                         console.log('Stream completo');
@@ -742,7 +766,7 @@ export function useChat(userId?: string): UseChatReturn {
 
                     // Decodificar o chunk
                     const chunk = decoder.decode(value, { stream: true });
-                    console.log('Chunk recebido:', chunk);
+                    console.log('Chunk recebido:', chunk.length > 100 ? chunk.substring(0, 100) + "..." : chunk);
 
                     // Processar o chunk como texto (pode conter múltiplas linhas de eventos)
                     const lines = chunk.split('\n');
@@ -819,35 +843,29 @@ export function useChat(userId?: string): UseChatReturn {
             } catch (error) {
                 console.error('Erro na chamada para API:', error);
 
+                // MODIFICADO: Mensagem mais informativa
+                let errorMessage = "Ocorreu um erro. Por favor, tente novamente.";
+
                 // Verificar se foi um erro de timeout (AbortError)
                 if (error instanceof DOMException && error.name === 'AbortError') {
-                    setError('A consulta está demorando muito. O servidor pode estar ocupado. Tente novamente mais tarde.');
-
-                    // Adicionar uma mensagem de erro visível no chat
-                    setMessages(prev => {
-                        // Só adicionar se a última mensagem for do usuário
-                        if (prev.length > 0 && prev[prev.length - 1].type === 'human') {
-                            return [...prev, {
-                                type: 'ai',
-                                content: 'A consulta está demorando muito. O servidor pode estar ocupado. Por favor, tente novamente mais tarde.'
-                            }];
-                        }
-                        return prev;
-                    });
-                } else {
-                    setError('Erro ao obter resposta do servidor: ' + (error instanceof Error ? error.message : 'Erro desconhecido'));
-
-                    // Adicionar mensagem de erro no chat
-                    setMessages(prev => {
-                        if (prev.length > 0 && prev[prev.length - 1].type === 'human') {
-                            return [...prev, {
-                                type: 'ai',
-                                content: 'Desculpe, ocorreu um erro ao processar sua solicitação. Por favor, tente novamente.'
-                            }];
-                        }
-                        return prev;
-                    });
+                    errorMessage = 'A consulta está demorando muito. O servidor pode estar ocupado. Tente uma pergunta mais curta ou tente novamente mais tarde.';
+                } else if (error instanceof Error) {
+                    errorMessage = error.message;
                 }
+
+                setError(errorMessage);
+
+                // Adicionar uma mensagem de erro visível no chat
+                setMessages(prev => {
+                    // Só adicionar se a última mensagem for do usuário
+                    if (prev.length > 0 && prev[prev.length - 1].type === 'human') {
+                        return [...prev, {
+                            type: 'ai',
+                            content: `${errorMessage} (${new Date().toLocaleTimeString()})`
+                        }];
+                    }
+                    return prev;
+                });
 
                 // Se for uma nova conversa e houve erro, cancelar a conversa
                 if (wasNewConversation && messagesRef.current.length <= 1) {

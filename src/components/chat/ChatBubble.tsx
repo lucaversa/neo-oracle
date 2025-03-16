@@ -96,7 +96,7 @@ export default function ChatBubble({
                     borderBottomLeftRadius: !isUser ? '4px' : undefined,
                     borderBottomRightRadius: isUser ? '4px' : undefined,
                     backgroundColor: isUser
-                        ? '#4f46e5'
+                        ? 'var(--primary-color)'
                         : (isDarkMode ? 'var(--background-subtle)' : 'var(--background-subtle)')
                 }}>
                     <div style={{

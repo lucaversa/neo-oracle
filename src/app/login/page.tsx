@@ -413,7 +413,6 @@ function LoginContent() {
                                 </div>
                             </div>
                         </div>
-
                         <div style={{
                             display: 'flex',
                             alignItems: 'center',
@@ -435,54 +434,9 @@ function LoginContent() {
                                         height: '0'
                                     }}
                                 />
-                                <div style={{
-                                    width: '18px',
-                                    height: '18px',
-                                    borderRadius: '4px',
-                                    marginRight: '10px',
-                                    border: '2px solid var(--border-color)',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    transition: 'all 0.2s',
-                                    cursor: 'pointer',
-                                    backgroundColor: 'var(--background-main)'
-                                }} onClick={() => {
-                                    const checkbox = document.getElementById('remember-me') as HTMLInputElement;
-                                    checkbox.checked = !checkbox.checked;
-                                }}>
-                                    <svg
-                                        xmlns="http://www.w3.org/2000/svg"
-                                        width="12"
-                                        height="12"
-                                        viewBox="0 0 24 24"
-                                        fill="none"
-                                        stroke="white"
-                                        strokeWidth="3"
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                        style={{
-                                            opacity: 0,
-                                            transition: 'opacity 0.2s'
-                                        }}
-                                    >
-                                        <polyline points="20 6 9 17 4 12"></polyline>
-                                    </svg>
-                                </div>
-                                <label
-                                    htmlFor="remember-me"
-                                    style={{
-                                        fontSize: '14px',
-                                        color: 'var(--text-secondary)',
-                                        cursor: 'pointer',
-                                        transition: 'color 0.3s'
-                                    }}
-                                >
-                                    Lembrar de mim
-                                </label>
+
                             </div>
                         </div>
-
                         <button
                             type="submit"
                             disabled={loading}

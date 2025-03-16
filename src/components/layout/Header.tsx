@@ -86,7 +86,7 @@ export default function Header({ toggleSidebar, onLogout, userName }: HeaderProp
                     <span style={{
                         fontSize: '20px',
                         fontWeight: 'bold',
-                        color: '#4f46e5', // Cor fixa para o logo, não muda com o tema
+                        color: 'var(--primary-color)', // Agora usa a variável CSS em vez de valor fixo
                     }}>
                         Oráculo
                     </span>
@@ -162,7 +162,7 @@ export default function Header({ toggleSidebar, onLogout, userName }: HeaderProp
                                 height: '32px',
                                 width: '32px',
                                 borderRadius: '50%',
-                                background: 'linear-gradient(135deg, #4f46e5, #3b82f6)',
+                                background: 'linear-gradient(135deg, var(--primary-color), var(--info-color))', // Usa variáveis CSS
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',

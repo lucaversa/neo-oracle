@@ -61,7 +61,7 @@ export default function ChatBubble({
                     width: '40px',
                     height: '40px',
                     borderRadius: '50%',
-                    backgroundColor: '#4f46e5',
+                    backgroundColor: 'var(--primary-color)', // Usa a variável CSS
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
@@ -168,7 +168,7 @@ export default function ChatBubble({
                     width: '40px',
                     height: '40px',
                     borderRadius: '50%',
-                    backgroundColor: '#4f46e5',
+                    backgroundColor: 'var(--primary-color)', // Usa a variável CSS
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',

@@ -1,8 +1,8 @@
 /* globals.css - com suporte melhorado para tema escuro */
 :root {
-  --primary-color: #4f46e5;
-  --primary-dark: #4338ca;
-  --primary-light: #818cf8;
+  --primary-color: #0891b2;
+  --primary-dark: #0e7490;
+  --primary-light: #22d3ee;
   --secondary-color: #10b981;
   --secondary-dark: #059669;
 

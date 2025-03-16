@@ -220,13 +220,35 @@ function LoginContent() {
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            fontSize: '28px',
-                            fontWeight: 'bold',
                             boxShadow: '0 8px 32px rgba(0, 0, 0, 0.1)',
                             backdropFilter: 'blur(4px)',
                             border: '2px solid rgba(255, 255, 255, 0.1)'
                         }}>
-                            OR
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                width="40"
+                                height="40"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="1.5"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                            >
+                                {/* Olho principal */}
+                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                                <circle cx="12" cy="12" r="3"></circle>
+
+                                {/* Raios ao redor do olho */}
+                                <line x1="12" y1="5" x2="12" y2="3"></line>
+                                <line x1="17" y1="7" x2="19" y2="5"></line>
+                                <line x1="19" y1="12" x2="21" y2="12"></line>
+                                <line x1="17" y1="17" x2="19" y2="19"></line>
+                                <line x1="12" y1="19" x2="12" y2="21"></line>
+                                <line x1="7" y1="17" x2="5" y2="19"></line>
+                                <line x1="5" y1="12" x2="3" y2="12"></line>
+                                <line x1="7" y1="7" x2="5" y2="5"></line>
+                            </svg>
                         </div>
                         <h1 style={{
                             fontSize: '24px',

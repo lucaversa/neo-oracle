@@ -297,7 +297,7 @@ export default function Sidebar({
                         alignItems: 'center',
                         justifyContent: 'center',
                         padding: '12px 16px',
-                        backgroundColor: '#4f46e5',
+                        backgroundColor: 'var(--primary-color)', // Agora usa a variável CSS
                         color: 'white',
                         border: 'none',
                         borderRadius: '10px',
@@ -311,13 +311,13 @@ export default function Sidebar({
                     }}
                     onMouseOver={(e) => {
                         if (!(creating || isCreatingSession || isNewConversation || isProcessing)) {
-                            e.currentTarget.style.backgroundColor = '#4338ca';
+                            e.currentTarget.style.backgroundColor = 'var(--primary-dark)'; // Atualizado para variável
                             e.currentTarget.style.transform = 'translateY(-1px)';
                             e.currentTarget.style.boxShadow = 'var(--shadow-lg)';
                         }
                     }}
                     onMouseOut={(e) => {
-                        e.currentTarget.style.backgroundColor = '#4f46e5';
+                        e.currentTarget.style.backgroundColor = 'var(--primary-color)'; // Atualizado para variável
                         e.currentTarget.style.transform = 'translateY(0)';
                         e.currentTarget.style.boxShadow = 'var(--shadow-md)';
                     }}
@@ -698,7 +698,7 @@ export default function Sidebar({
                         height="50"
                         viewBox="0 0 24 24"
                         fill="none"
-                        stroke={isDarkMode ? "rgba(255, 255, 255, 0.8)" : "rgba(79, 70, 229, 0.8)"}
+                        stroke={isDarkMode ? "rgba(255, 255, 255, 0.8)" : "rgba(8, 145, 178, 0.8)"} // Turquesa quando claro
                         strokeWidth="1.5"
                         strokeLinecap="round"
                         strokeLinejoin="round"
@@ -720,7 +720,7 @@ export default function Sidebar({
                 </div>
                 <div style={{
                     textAlign: 'center',
-                    color: isDarkMode ? 'rgba(255, 255, 255, 0.6)' : 'rgba(79, 70, 229, 0.7)',
+                    color: isDarkMode ? 'rgba(255, 255, 255, 0.6)' : 'rgba(8, 145, 178, 0.7)', // Turquesa
                     fontSize: '14px',
                     fontWeight: '500',
                     letterSpacing: '0.5px'

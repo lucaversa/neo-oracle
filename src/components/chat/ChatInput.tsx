@@ -302,7 +302,7 @@ export default function ChatInput({
                                 height: '40px',
                                 padding: '0',
                                 borderRadius: '50%',
-                                background: 'linear-gradient(135deg, #4f46e5 0%, #4338ca 100%)',
+                                background: 'linear-gradient(135deg, var(--primary-color) 0%, var(--primary-dark) 100%)', // Usa variáveis CSS
                                 color: 'white',
                                 border: 'none',
                                 cursor: (inputDisabled || !message.trim()) ? 'not-allowed' : 'pointer',
@@ -314,7 +314,7 @@ export default function ChatInput({
                                 transform: (inputDisabled || !message.trim())
                                     ? 'translateY(-50%) scale(0.95)'
                                     : 'translateY(-50%) scale(1)',
-                                boxShadow: '0 4px 12px rgba(79, 70, 229, 0.3)'
+                                boxShadow: '0 4px 12px rgba(8, 145, 178, 0.3)' // Sombra turquesa
                             }}
                         >
                             {isSending ? (

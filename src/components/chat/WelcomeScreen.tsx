@@ -75,7 +75,7 @@ export default function WelcomeScreen({ onNewChat, hasPreviousChats, isCreating 
                     alignItems: 'center',
                     justifyContent: 'center',
                     padding: '12px 24px',
-                    backgroundColor: 'var(--primary-color)',
+                    backgroundColor: 'var(--primary-color)', // Já usa a variável CSS, mas vamos garantir
                     color: 'white',
                     border: 'none',
                     borderRadius: '8px',

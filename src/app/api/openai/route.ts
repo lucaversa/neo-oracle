@@ -37,34 +37,105 @@ Ao citar informações de documentos, SEMPRE indique de qual documento a informa
 // Implementar função para salvar no banco de dados de forma assíncrona
 const saveMessageToDatabase = async (trimmedSessionId: string, userId: string, aiMessage: ChatMessage) => {
     try {
-        // Verificar se a sessão existe
-        const { data: sessionData, error: sessionError } = await supabase
-            .from('user_chat_sessions')
-            .select('messages')
-            .eq('session_id', trimmedSessionId)
-            .eq('user_id', userId)
-            .maybeSingle();
+        // Número máximo de tentativas
+        const MAX_RETRIES = 3;
+        let attempt = 0;
+        let saved = false;
 
-        if (!sessionError && sessionData) {
-            // Atualizar sessão existente com a resposta da AI
-            const existingMessages = sessionData.messages || [];
-            const updatedMessages = [...existingMessages, aiMessage];
+        while (!saved && attempt < MAX_RETRIES) {
+            attempt++;
 
-            await supabase
-                .from('user_chat_sessions')
-                .update({
-                    messages: updatedMessages,
-                    updated_at: new Date().toISOString()
-                })
-                .eq('session_id', trimmedSessionId)
-                .eq('user_id', userId);
+            try {
+                // Verificar se a sessão existe
+                const { data: sessionData, error: sessionError } = await supabase
+                    .from('user_chat_sessions')
+                    .select('messages')
+                    .eq('session_id', trimmedSessionId)
+                    .eq('user_id', userId)
+                    .maybeSingle();
 
-            console.log(`Mensagem AI salva no banco para a sessão ${trimmedSessionId}`);
-        } else {
-            console.error('Sessão não encontrada para salvar resposta AI');
+                if (sessionError) {
+                    console.error(`Tentativa ${attempt}: Erro ao buscar sessão:`, sessionError);
+                    // Esperar um pouco antes de tentar novamente (backoff exponencial)
+                    await new Promise(resolve => setTimeout(resolve, 300 * attempt));
+                    continue;
+                }
+
+                if (!sessionData) {
+                    console.error(`Tentativa ${attempt}: Sessão não encontrada para salvar resposta AI`);
+                    // Se não encontrou a sessão após várias tentativas, provavelmente é um erro real
+                    if (attempt >= MAX_RETRIES) {
+                        throw new Error(`Sessão ${trimmedSessionId} não encontrada após ${MAX_RETRIES} tentativas`);
+                    }
+
+                    // Esperar um pouco antes de tentar novamente
+                    await new Promise(resolve => setTimeout(resolve, 500 * attempt));
+                    continue;
+                }
+
+                // Garantir que temos um array de mensagens válido
+                const existingMessages = Array.isArray(sessionData.messages) ? sessionData.messages : [];
+
+                // Verificar se a mensagem da IA já existe para evitar duplicação
+                const messageExists = existingMessages.some(msg =>
+                    msg &&
+                    msg.type === 'ai' &&
+                    msg.content === aiMessage.content
+                );
+
+                if (messageExists) {
+                    console.log(`Mensagem AI já existe na sessão ${trimmedSessionId}, pulando salvamento`);
+                    return; // Sair da função, não precisa salvar novamente
+                }
+
+                // Adicionar a nova mensagem da IA ao array existente
+                const updatedMessages = [...existingMessages, aiMessage];
+
+                // Atualizar a sessão com o novo array de mensagens
+                const { error: updateError } = await supabase
+                    .from('user_chat_sessions')
+                    .update({
+                        messages: updatedMessages,
+                        updated_at: new Date().toISOString()
+                    })
+                    .eq('session_id', trimmedSessionId)
+                    .eq('user_id', userId);
+
+                if (updateError) {
+                    console.error(`Tentativa ${attempt}: Erro ao atualizar sessão:`, updateError);
+
+                    if (attempt >= MAX_RETRIES) {
+                        throw updateError;
+                    }
+
+                    // Esperar um pouco antes de tentar novamente
+                    await new Promise(resolve => setTimeout(resolve, 500 * attempt));
+                    continue;
+                }
+
+                // Se chegou aqui, salvou com sucesso
+                console.log(`✅ Mensagem AI salva no banco para a sessão ${trimmedSessionId} na tentativa ${attempt}`);
+                saved = true;
+
+            } catch (innerError) {
+                console.error(`Erro na tentativa ${attempt} ao salvar mensagem:`, innerError);
+
+                if (attempt >= MAX_RETRIES) {
+                    throw innerError; // Propagar o erro após todas as tentativas
+                }
+
+                // Esperar um pouco antes de tentar novamente
+                await new Promise(resolve => setTimeout(resolve, 500 * attempt));
+            }
         }
+
+        if (!saved) {
+            throw new Error(`Não foi possível salvar a mensagem após ${MAX_RETRIES} tentativas`);
+        }
+
     } catch (dbError) {
-        console.error("Erro no banco de dados ao salvar resposta AI:", dbError);
+        console.error("Erro fatal no banco de dados ao salvar resposta AI:", dbError);
+        throw dbError; // Propagar o erro para que o chamador saiba que houve falha
     }
 };
 
@@ -261,12 +332,17 @@ export async function POST(request: NextRequest) {
                 // Completar a mensagem do AI
                 aiMessage.content = fullContent;
 
-                // Salvar a resposta completa no banco de forma assíncrona
-                // em vez de aguardar o salvamento, vamos continuar o processamento
+                // MODIFICADO: Salvar a resposta no banco ANTES de finalizar o stream
+                // e AGUARDAR a conclusão do salvamento
                 if (fullContent.length > 0) {
-                    // Não aguardamos a Promise para não atrasar o stream
-                    saveMessageToDatabase(trimmedSessionId, userId, aiMessage)
-                        .catch(err => console.error("Erro ao salvar mensagem:", err));
+                    try {
+                        // Agora aguardamos explicitamente a Promise
+                        await saveMessageToDatabase(trimmedSessionId, userId, aiMessage);
+                        console.log("✅ Mensagem da IA salva com sucesso no banco de dados");
+                    } catch (saveError) {
+                        console.error("❌ Erro ao salvar mensagem da IA:", saveError);
+                        // Mesmo com erro, continuamos para finalizar o stream
+                    }
                 }
 
                 // Finalizar o stream

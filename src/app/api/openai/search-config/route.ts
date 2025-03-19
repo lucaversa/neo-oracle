@@ -7,7 +7,7 @@ export async function GET() {
         // Buscar vector stores ativas que são pesquisáveis
         const { data, error } = await supabase
             .from('vector_stores')
-            .select('vector_store_id, name')
+            .select('vector_store_id')
             .eq('is_active', true)
             .eq('is_searchable', true);
 
@@ -22,12 +22,8 @@ export async function GET() {
         // Extrair os IDs para uma lista
         const searchableIds = data ? data.map(store => store.vector_store_id) : [];
 
-        // Incluir também os nomes para exibição na interface, se necessário
-        const searchableStores = data || [];
-
         return NextResponse.json({
             searchableIds,
-            searchableStores,
             status: 'success'
         });
     } catch (error) {

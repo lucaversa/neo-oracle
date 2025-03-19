@@ -1,9 +1,11 @@
+// src/components/admin/VectorStoreCard.tsx
 'use client'
 
 import { useState } from 'react';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { VectorStore } from '@/types/admin';
+import { useRouter } from 'next/navigation';
 
 interface VectorStoreCardProps {
     vectorStore: VectorStore;
@@ -18,6 +20,7 @@ export default function VectorStoreCard({
 }: VectorStoreCardProps) {
     const [isTogglingStatus, setIsTogglingStatus] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const router = useRouter();
 
     const handleToggleStatus = async () => {
         try {
@@ -40,6 +43,10 @@ export default function VectorStoreCard({
             console.error('Erro ao formatar data:', error);
             return 'Data desconhecida';
         }
+    };
+
+    const navigateToDetails = () => {
+        router.push(`/admin/vector-stores/${vectorStore.vector_store_id}`);
     };
 
     return (
@@ -185,6 +192,34 @@ export default function VectorStoreCard({
                         {error}
                     </div>
                 )}
+
+                {/* Botão para ver arquivos */}
+                <button
+                    onClick={navigateToDetails}
+                    style={{
+                        width: '100%',
+                        padding: '10px 12px',
+                        backgroundColor: 'var(--background-subtle)',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: '6px',
+                        color: 'var(--text-primary)',
+                        fontSize: '14px',
+                        fontWeight: '500',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '8px',
+                        marginTop: '10px',
+                        transition: 'all 0.2s'
+                    }}
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"></path>
+                        <polyline points="14 2 14 8 20 8"></polyline>
+                    </svg>
+                    Gerenciar Arquivos
+                </button>
             </div>
 
             {/* Rodapé com ações */}

@@ -2,14 +2,15 @@
 
 // Interfaces existentes
 export interface VectorStore {
+    id?: number;
     vector_store_id: string;
     name: string;
-    description?: string;
-    created_at: string;
-    updated_at: string;
+    description?: string | null;
     is_active: boolean;
     is_searchable: boolean;
-    created_by?: string;
+    created_by?: string | null;
+    created_at: string;
+    updated_at?: string | null;
 }
 
 export interface CreateVectorStoreRequest {
@@ -88,4 +89,3 @@ export interface DeleteVectorStoreFileResponse {
     object: string;
     deleted: boolean;
 }
-

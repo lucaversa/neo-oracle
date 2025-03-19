@@ -1,6 +1,7 @@
 // src/app/layout.tsx
 import './globals.css';
 import { AuthProvider } from '@/context/AuthContext';
+import { AdminProvider } from '@/context/AdminContext';
 import { ThemeProvider } from '@/context/ThemeContext';
 import SessionTimeoutWrapper from '@/components/auth/SessionTimeoutWrapper';
 
@@ -18,11 +19,13 @@ export default function RootLayout({
     <html lang="pt-BR">
       <body className="vsc-initialized">
         <AuthProvider>
-          <ThemeProvider>
-            <SessionTimeoutWrapper>
-              {children}
-            </SessionTimeoutWrapper>
-          </ThemeProvider>
+          <AdminProvider>
+            <ThemeProvider>
+              <SessionTimeoutWrapper>
+                {children}
+              </SessionTimeoutWrapper>
+            </ThemeProvider>
+          </AdminProvider>
         </AuthProvider>
       </body>
     </html>

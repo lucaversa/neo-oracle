@@ -62,24 +62,40 @@ export function useChat(userId?: string): UseChatReturn {
         messagesRef.current = messages;
     }, [messages]);
 
-    // Carregar vector stores pesquisáveis quando o userId mudar
+
+    // Adicionar este useEffect na parte inicial do hook useChat, junto com os outros useEffects
     useEffect(() => {
+        // Função para carregar vector stores pesquisáveis
         const loadSearchableVectorStores = async () => {
             try {
-                const response = await fetch(`/api/openai/search-config`);
-                if (response.ok) {
-                    const data = await response.json();
-                    if (data.searchableIds && Array.isArray(data.searchableIds)) {
-                        setSearchableVectorStores(data.searchableIds);
-                    }
+                console.log('Carregando vector stores pesquisáveis...');
+                const response = await fetch('/api/openai/search-config');
+
+                if (!response.ok) {
+                    console.error('Erro ao buscar vector stores:', response.statusText);
+                    return;
+                }
+
+                const data = await response.json();
+
+                if (data.searchableIds && Array.isArray(data.searchableIds)) {
+                    console.log('Vector stores pesquisáveis carregadas:', data.searchableIds);
+                    setSearchableVectorStores(data.searchableIds);
+                } else {
+                    console.log('Nenhuma vector store pesquisável encontrada');
+                    setSearchableVectorStores([]);
                 }
             } catch (error) {
                 console.error('Erro ao carregar vector stores pesquisáveis:', error);
+                setSearchableVectorStores([]);
             }
         };
 
-        loadSearchableVectorStores();
-    }, []);
+        // Carregar as vector stores quando o usuário estiver autenticado
+        if (userId) {
+            loadSearchableVectorStores();
+        }
+    }, [userId]); // Recarregar quando mudar de usuário
 
     // Função para resetar o estado de processamento manualmente
     const resetProcessingState = useCallback(() => {
@@ -757,7 +773,7 @@ export function useChat(userId?: string): UseChatReturn {
                         messages: allMessages,
                         sessionId: trimmedSessionId,
                         userId: userId || 'anonymous',
-                        vectorStoreIds: searchableVectorStores
+                        vectorStoreIds: searchableVectorStores // Incluir vector stores pesquisáveis
                     }),
                     signal: controller.signal
                 });

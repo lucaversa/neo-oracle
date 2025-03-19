@@ -186,107 +186,159 @@ export async function deleteVectorStore(id: string): Promise<void> {
     }
 }
 
-// Novas funções para gerenciamento de arquivos
-
-// Listar arquivos de uma vector store
-export async function listVectorStoreFiles(vectorStoreId: string): Promise<VectorStoreFile[]> {
+export const listVectorStoreFiles = async (
+    vectorStoreId: string,
+    page: number = 1,
+    limit: number = 10,
+    cursor?: string
+): Promise<VectorStoreFile[]> => {
     try {
-        const response = await fetch(`${API_BASE_URL}/vector-stores/${vectorStoreId}/files`, {
-            method: 'GET',
-            headers: {
-                'Content-Type': 'application/json'
+        // Construir os parâmetros de URL
+        const params = new URLSearchParams();
+        params.append('limit', limit.toString());
+        if (cursor) {
+            params.append('after', cursor);
+        }
+
+        // Fazer a requisição com os parâmetros
+        const url = `/api/admin/vector-stores/${vectorStoreId}/files?${params.toString()}`;
+        console.log('Requesting files with URL:', url);
+
+        const response = await fetch(url);
+
+        if (!response.ok) {
+            throw new Error(`Failed to fetch files: ${response.statusText}`);
+        }
+
+        const responseData = await response.json();
+        console.log('Files API response data:', responseData);
+
+        let files: VectorStoreFile[] = [];
+
+        if (responseData && responseData.data && Array.isArray(responseData.data)) {
+            files = responseData.data.map((file: any) => {
+                const fileData = file.object ? file : file;
+
+                return {
+                    id: fileData.id || '',
+                    vector_store_id: vectorStoreId,
+                    filename: fileData.filename || fileData.name ||
+                        (fileData.id ? fileData.id.replace(/^file-/, '') : 'unknown'),
+                    status: fileData.status || 'processed',
+                    bytes: typeof fileData.bytes === 'number' ? fileData.bytes :
+                        (typeof fileData.size === 'number' ? fileData.size : 0),
+                    created_at: fileData.created_at || Math.floor(Date.now() / 1000),
+                    purpose: fileData.purpose || 'assistants',
+                    object: fileData.object || 'file'
+                };
+            });
+        }
+
+        // Adicionar metadados de paginação aos resultados
+        Object.defineProperty(files, 'metadata', {
+            enumerable: false,
+            value: {
+                has_more: responseData.has_more || false,
+                last_id: responseData.last_id || null,
+                first_id: responseData.first_id || null
             }
         });
 
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error || `Error: ${response.status}`);
-        }
-
-        const data = await response.json();
-        return data.data || [];
+        return files;
     } catch (error) {
         console.error('Error listing vector store files:', error);
         throw error;
     }
-}
+};
 
-// Upload de arquivo para uma vector store
-export async function uploadFileToVectorStore(
-    vectorStoreId: string,
-    file: File,
-    chunkingStrategy?: 'auto' | 'scatter' | { chunk_size: number, chunk_overlap: number }
-): Promise<VectorStoreFile> {
+export const uploadFileToVectorStore = async (vectorStoreId: string, file: File): Promise<VectorStoreFile> => {
     try {
-        // Primeiro, fazer upload do arquivo
+        console.log(`Iniciando upload para Vector Store ${vectorStoreId} - Arquivo: ${file.name}`);
+
+        // ETAPA 1: Upload do arquivo para obter file_id
         const formData = new FormData();
         formData.append('file', file);
-        formData.append('purpose', 'vector_store');
+        // IMPORTANTE: Uso correto do purpose
+        formData.append('purpose', 'assistants');
 
-        const uploadResponse = await fetch(`${API_BASE_URL}/files`, {
+        const uploadResponse = await fetch('/api/admin/files', {
             method: 'POST',
-            body: formData
+            body: formData,
         });
 
+        console.log(`Resposta do upload - status: ${uploadResponse.status}`);
+
+        // Tratamento de erro melhorado
         if (!uploadResponse.ok) {
-            const errorData = await uploadResponse.json();
-            throw new Error(errorData.error || `Error uploading file: ${uploadResponse.status}`);
+            let errorMessage = `Erro no upload do arquivo (${uploadResponse.status}): ${uploadResponse.statusText}`;
+            try {
+                const errorData = await uploadResponse.json();
+                console.error('Detalhes do erro:', errorData);
+                errorMessage = errorData.error || errorData.details || errorMessage;
+            } catch (parseError) {
+                const errorText = await uploadResponse.text();
+                console.error('Resposta bruta de erro:', errorText);
+                errorMessage = `Erro não estruturado: ${errorText.substring(0, 200)}`;
+            }
+            throw new Error(errorMessage);
         }
 
         const uploadedFile = await uploadResponse.json();
-        const fileId = uploadedFile.id;
+        console.log('Resposta de upload bem-sucedida:', uploadedFile);
 
-        // Depois, vincular o arquivo à vector store
-        const body: any = { file_id: fileId };
-
-        // Adicionar estratégia de chunking se fornecida
-        if (chunkingStrategy) {
-            body.chunking_strategy = chunkingStrategy;
+        // ETAPA 2: Associar arquivo à Vector Store
+        if (!uploadedFile.id) {
+            throw new Error('ID do arquivo não foi retornado pela API');
         }
 
-        const attachResponse = await fetch(`${API_BASE_URL}/vector-stores/${vectorStoreId}/files`, {
+        const fileId = uploadedFile.id;
+        console.log(`Associando arquivo ${fileId} à Vector Store ${vectorStoreId}`);
+
+        const associateResponse = await fetch(`/api/admin/vector-stores/${vectorStoreId}/files`, {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
             },
-            body: JSON.stringify(body)
+            body: JSON.stringify({
+                file_id: fileId,
+                chunking_strategy: {
+                    type: "auto"
+                }
+            }),
         });
 
-        if (!attachResponse.ok) {
-            const errorData = await attachResponse.json();
-
-            // Tentar excluir o arquivo se falhar ao anexá-lo
+        if (!associateResponse.ok) {
+            let errorMessage = `Erro ao associar arquivo à Vector Store (${associateResponse.status})`;
             try {
-                await fetch(`${API_BASE_URL}/files/${fileId}`, {
-                    method: 'DELETE',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    }
-                });
-            } catch (deleteError) {
-                console.error('Error deleting orphaned file after attachment failure:', deleteError);
+                const errorData = await associateResponse.json();
+                console.error('Detalhes do erro de associação:', errorData);
+                errorMessage = errorData.error || errorData.details || errorMessage;
+            } catch (parseError) {
+                const errorText = await associateResponse.text();
+                console.error('Resposta bruta de erro de associação:', errorText);
+                errorMessage = `Erro não estruturado: ${errorText.substring(0, 200)}`;
             }
-
-            throw new Error(errorData.error || `Error attaching file: ${attachResponse.status}`);
+            throw new Error(errorMessage);
         }
 
-        const attachedFile: CreateVectorStoreFileResponse = await attachResponse.json();
+        const associatedFile = await associateResponse.json();
+        console.log('Arquivo associado com sucesso:', associatedFile);
 
-        // Converter para o formato esperado
         return {
             id: fileId,
+            vector_store_id: vectorStoreId,
             filename: file.name,
             bytes: file.size,
-            created_at: Math.floor(Date.now() / 1000),
             status: 'processing',
-            purpose: 'vector_store',
-            vector_store_id: vectorStoreId
+            created_at: Math.floor(Date.now() / 1000),
+            purpose: 'assistants' // Adicionando a propriedade purpose obrigatória
         };
+
     } catch (error) {
-        console.error('Error uploading file to vector store:', error);
+        console.error('Erro completo no processo de upload:', error);
         throw error;
     }
-}
+};
 
 // Remover arquivo de uma vector store
 export async function deleteFileFromVectorStore(
@@ -335,24 +387,89 @@ export async function deleteFile(fileId: string): Promise<boolean> {
     }
 }
 
-// Obter detalhes de um arquivo
-export async function getFileDetails(fileId: string): Promise<OpenAIFile> {
+export const getFileDetails = async (fileId: string): Promise<any> => {
     try {
-        const response = await fetch(`${API_BASE_URL}/files/${fileId}`, {
-            method: 'GET',
-            headers: {
-                'Content-Type': 'application/json'
-            }
-        });
+        const response = await fetch(`/api/admin/files/${fileId}`);
 
         if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error || `Error: ${response.status}`);
+            throw new Error(`Failed to fetch file details: ${response.statusText}`);
         }
 
-        return await response.json();
+        const data = await response.json();
+        return data;
     } catch (error) {
         console.error('Error getting file details:', error);
         throw error;
     }
-}
+};
+
+// Cache local para evitar múltiplas requisições ao mesmo arquivo
+const fileCache = new Map<string, any>();
+
+// Função para obter detalhes do arquivo de forma otimizada
+export const getFileInfoOptimized = async (fileId: string): Promise<any> => {
+    // Verificar cache primeiro
+    if (fileCache.has(fileId)) {
+        return fileCache.get(fileId);
+    }
+
+    try {
+        const response = await fetch(`/api/admin/files/${fileId}`);
+
+        if (!response.ok) {
+            throw new Error(`Failed to fetch file details: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+
+        // Guardar no cache
+        fileCache.set(fileId, data);
+
+        return data;
+    } catch (error) {
+        console.error(`Error getting file details for ${fileId}:`, error);
+        // Retornar objeto vazio em caso de erro para não quebrar o processamento
+        return {};
+    }
+};
+
+// Função para processar arquivos em lotes para evitar rate limit
+export const processFilesInBatches = async (
+    fileIds: string[],
+    batchSize: number = 5,
+    delayMs: number = 1000
+): Promise<Record<string, any>> => {
+    const results: Record<string, any> = {};
+
+    // Processar apenas IDs que não estão em cache
+    const uncachedIds = fileIds.filter(id => !fileCache.has(id));
+
+    // Processar em lotes
+    for (let i = 0; i < uncachedIds.length; i += batchSize) {
+        const batch = uncachedIds.slice(i, i + batchSize);
+
+        // Processar batch em paralelo
+        await Promise.all(batch.map(async fileId => {
+            try {
+                const info = await getFileInfoOptimized(fileId);
+                results[fileId] = info;
+            } catch (e) {
+                console.error(`Error processing file ${fileId}:`, e);
+            }
+        }));
+
+        // Esperar entre batches para evitar rate limit
+        if (i + batchSize < uncachedIds.length) {
+            await new Promise(resolve => setTimeout(resolve, delayMs));
+        }
+    }
+
+    // Adicionar resultados do cache
+    fileIds.forEach(id => {
+        if (fileCache.has(id) && !results[id]) {
+            results[id] = fileCache.get(id);
+        }
+    });
+
+    return results;
+};

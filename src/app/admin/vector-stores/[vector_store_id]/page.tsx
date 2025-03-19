@@ -2,24 +2,21 @@
 'use client'
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useAdmin, withAdminAccess } from '@/context/AdminContext';
 import { VectorStore } from '@/types/admin';
 import { getVectorStore } from '@/services/vectorStoreService';
 import FileList from '@/components/admin/FileList';
 import FileUpload from '@/components/admin/FileUpload';
-import FileStats from '@/components/admin/FileStats';
 import HelpTooltip from '@/components/common/HelpTooltip';
 
-interface VectorStoreDetailPageProps {
-    params: {
-        vector_store_id: string;
-    };
-}
+function VectorStoreDetailPage() {
+    // Usar o hook useParams() em vez de acessar props.params diretamente
+    const params = useParams();
+    const vector_store_id = String(params.vector_store_id || '');
 
-function VectorStoreDetailPage({ params }: VectorStoreDetailPageProps) {
-    const { vector_store_id } = params;
+    // Estado e hooks
     const [vectorStore, setVectorStore] = useState<VectorStore | null>(null);
     const [loading, setLoading] = useState<boolean>(true);
     const [error, setError] = useState<string | null>(null);
@@ -204,7 +201,7 @@ function VectorStoreDetailPage({ params }: VectorStoreDetailPageProps) {
                         fontWeight: '600',
                         color: 'var(--text-primary)'
                     }}>
-                        {vectorStore.name}
+                        {vectorStore?.name || 'Carregando...'}
                     </h1>
                 </div>
                 <button
@@ -280,7 +277,7 @@ function VectorStoreDetailPage({ params }: VectorStoreDetailPageProps) {
                                 color: 'var(--text-primary)',
                                 marginBottom: '4px'
                             }}>
-                                {vectorStore.name}
+                                {vectorStore?.name || 'Carregando...'}
                             </h2>
                             <div style={{
                                 display: 'flex',
@@ -298,33 +295,33 @@ function VectorStoreDetailPage({ params }: VectorStoreDetailPageProps) {
                                         <circle cx="12" cy="12" r="10"></circle>
                                         <polyline points="12 6 12 12 16 14"></polyline>
                                     </svg>
-                                    Criado em {new Date(vectorStore.created_at).toLocaleString()}
+                                    Criado em {vectorStore ? new Date(vectorStore.created_at).toLocaleString() : '...'}
                                 </span>
                                 <span style={{
-                                    backgroundColor: vectorStore.is_active ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)',
-                                    color: vectorStore.is_active ? 'var(--success-color)' : 'var(--error-color)',
+                                    backgroundColor: vectorStore?.is_active ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+                                    color: vectorStore?.is_active ? 'var(--success-color)' : 'var(--error-color)',
                                     padding: '2px 8px',
                                     borderRadius: '999px',
                                     fontSize: '12px',
                                     fontWeight: '500'
                                 }}>
-                                    {vectorStore.is_active ? 'Ativo' : 'Inativo'}
+                                    {vectorStore?.is_active ? 'Ativo' : 'Inativo'}
                                 </span>
                                 <span style={{
-                                    backgroundColor: vectorStore.is_searchable ? 'rgba(59, 130, 246, 0.1)' : 'rgba(107, 114, 128, 0.1)',
-                                    color: vectorStore.is_searchable ? 'var(--info-color)' : 'var(--text-tertiary)',
+                                    backgroundColor: vectorStore?.is_searchable ? 'rgba(59, 130, 246, 0.1)' : 'rgba(107, 114, 128, 0.1)',
+                                    color: vectorStore?.is_searchable ? 'var(--info-color)' : 'var(--text-tertiary)',
                                     padding: '2px 8px',
                                     borderRadius: '999px',
                                     fontSize: '12px',
                                     fontWeight: '500'
                                 }}>
-                                    {vectorStore.is_searchable ? 'Pesquisável' : 'Não pesquisável'}
+                                    {vectorStore?.is_searchable ? 'Pesquisável' : 'Não pesquisável'}
                                 </span>
                             </div>
                         </div>
                     </div>
 
-                    {vectorStore.description && (
+                    {vectorStore?.description && (
                         <p style={{
                             fontSize: '14px',
                             color: 'var(--text-secondary)',
@@ -336,35 +333,6 @@ function VectorStoreDetailPage({ params }: VectorStoreDetailPageProps) {
                             {vectorStore.description}
                         </p>
                     )}
-                </div>
-
-                {/* Seção de estatísticas */}
-                <div style={{
-                    backgroundColor: 'var(--background-elevated)',
-                    borderRadius: '8px',
-                    padding: '24px',
-                    marginBottom: '24px',
-                    border: '1px solid var(--border-color)',
-                    boxShadow: 'var(--shadow-sm)'
-                }}>
-                    <h2 style={{
-                        fontSize: '18px',
-                        fontWeight: '600',
-                        color: 'var(--text-primary)',
-                        marginBottom: '16px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px'
-                    }}>
-                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M22 12h-4l-3 9L9 3l-3 9H2"></path>
-                        </svg>
-                        Estatísticas de Arquivos
-                    </h2>
-                    <FileStats
-                        vectorStoreId={vector_store_id}
-                        refreshTrigger={refreshTrigger}
-                    />
                 </div>
 
                 {/* Seção de upload de arquivos */}
@@ -403,54 +371,6 @@ function VectorStoreDetailPage({ params }: VectorStoreDetailPageProps) {
                         vectorStoreId={vector_store_id}
                         onUploadSuccess={handleRefresh}
                     />
-                </div>
-
-                {/* Seção informativa */}
-                <div style={{
-                    backgroundColor: 'var(--background-elevated)',
-                    borderRadius: '8px',
-                    padding: '24px',
-                    marginBottom: '24px',
-                    border: '1px solid var(--border-color)',
-                    boxShadow: 'var(--shadow-sm)'
-                }}>
-                    <div style={{
-                        padding: '16px',
-                        backgroundColor: 'var(--background-subtle)',
-                        borderRadius: '8px',
-                        marginBottom: '24px',
-                        borderLeft: '4px solid var(--info-color)'
-                    }}>
-                        <h3 style={{
-                            fontSize: '16px',
-                            fontWeight: '600',
-                            color: 'var(--text-primary)',
-                            marginBottom: '10px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '8px'
-                        }}>
-                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--info-color)' }}>
-                                <circle cx="12" cy="12" r="10"></circle>
-                                <line x1="12" y1="16" x2="12" y2="12"></line>
-                                <line x1="12" y1="8" x2="12.01" y2="8"></line>
-                            </svg>
-                            Sobre os Arquivos na Vector Store
-                        </h3>
-                        <ul style={{
-                            margin: '0 0 0 20px',
-                            padding: '0',
-                            color: 'var(--text-secondary)',
-                            fontSize: '14px',
-                            lineHeight: '1.6'
-                        }}>
-                            <li>Arquivos são processados automaticamente após o upload e divididos em trechos (chunks) para indexação</li>
-                            <li>O processamento pode levar alguns minutos, dependendo do tamanho e complexidade do documento</li>
-                            <li>O tamanho máximo por arquivo é de 25MB</li>
-                            <li>Arquivos indexados podem ser consultados pelos usuários durante as conversas com o chatbot</li>
-                            <li>Ao excluir a Vector Store, todos os arquivos associados são excluídos permanentemente</li>
-                        </ul>
-                    </div>
                 </div>
 
                 {/* Seção de listagem de arquivos */}
@@ -494,5 +414,4 @@ function VectorStoreDetailPage({ params }: VectorStoreDetailPageProps) {
     );
 }
 
-// Exportar com o wrapper de administrador
 export default withAdminAccess(VectorStoreDetailPage);

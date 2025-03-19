@@ -28,12 +28,14 @@ export default function FileStats({ vectorStoreId, refreshTrigger = 0 }: FileSta
         }
     }, [vectorStoreId, refreshTrigger]);
 
+    // src/components/admin/FileStats.tsx
     const loadStats = async () => {
         try {
             setLoading(true);
             setError(null);
 
-            const files = await listVectorStoreFiles(vectorStoreId);
+            const files = await listVectorStoreFiles(vectorStoreId, 1, 100);
+            console.log('Files for stats:', files);
 
             // Calcular estatísticas
             const newStats = {
@@ -46,21 +48,40 @@ export default function FileStats({ vectorStoreId, refreshTrigger = 0 }: FileSta
             };
 
             files.forEach(file => {
-                // Status
-                if (file.status === 'processed') newStats.totalProcessed++;
-                else if (file.status === 'processing') newStats.totalProcessing++;
-                else if (file.status === 'error') newStats.totalError++;
+                // Contagem de status
+                if (file.status === 'processed' || file.status === 'completed') {
+                    newStats.totalProcessed++;
+                } else if (file.status === 'processing') {
+                    newStats.totalProcessing++;
+                } else if (file.status === 'error') {
+                    newStats.totalError++;
+                } else {
+                    // Padrão para completed
+                    newStats.totalProcessed++;
+                }
 
                 // Tamanho total
                 newStats.totalSize += file.bytes || 0;
 
-                // Contagem por tipo de arquivo
+                // Extração da extensão dos arquivos
                 if (file.filename) {
-                    const extension = file.filename.split('.').pop()?.toLowerCase() || 'unknown';
-                    newStats.fileTypes[extension] = (newStats.fileTypes[extension] || 0) + 1;
-                } else {
-                    // Se não houver filename, categorizar como desconhecido
-                    newStats.fileTypes['unknown'] = (newStats.fileTypes['unknown'] || 0) + 1;
+                    let extension = '';
+                    if (file.filename.includes('.')) {
+                        extension = file.filename.split('.').pop()?.toLowerCase() || '';
+                        if (extension) {
+                            newStats.fileTypes[extension] = (newStats.fileTypes[extension] || 0) + 1;
+                        }
+                    }
+
+                    if (!extension) {
+                        // Se não tem extensão, usar primeira parte do ID como "tipo"
+                        const typeId = file.id.substring(0, 3).toUpperCase();
+                        newStats.fileTypes[typeId] = (newStats.fileTypes[typeId] || 0) + 1;
+                    }
+                } else if (file.id) {
+                    // Se não tem filename, usar primeira parte do ID como "tipo"
+                    const typeId = file.id.substring(0, 3).toUpperCase();
+                    newStats.fileTypes[typeId] = (newStats.fileTypes[typeId] || 0) + 1;
                 }
             });
 

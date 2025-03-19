@@ -55,7 +55,6 @@ export async function GET(request: NextRequest) {
     }
 }
 
-// POST endpoint para fazer upload de arquivo
 export async function POST(request: NextRequest) {
     try {
         // Obter chave da API da OpenAI
@@ -67,11 +66,20 @@ export async function POST(request: NextRequest) {
         // Processar os dados do formulário
         const formData = await request.formData();
         const file = formData.get('file') as File;
-        const purpose = formData.get('purpose') || 'vector_store';
+
+        // IMPORTANTE: O purpose correto é "assistants" em vez de "vector_store"
+        const purpose = formData.get('purpose') || 'assistants';
 
         if (!file) {
             return NextResponse.json({ error: 'Nenhum arquivo enviado' }, { status: 400 });
         }
+
+        console.log('Processando upload de arquivo:', {
+            fileName: file.name,
+            fileSize: file.size,
+            fileType: file.type,
+            purpose
+        });
 
         // Verificar tipo de arquivo
         const allowedTypes = ['application/pdf', 'text/plain', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
@@ -94,35 +102,29 @@ export async function POST(request: NextRequest) {
         openaiFormData.append('file', blob, file.name);
         openaiFormData.append('purpose', purpose as string);
 
-        console.log('Enviando arquivo para a API OpenAI:', {
-            fileName: file.name,
-            fileSize: file.size,
-            fileType: file.type,
-            purpose
-        });
+        console.log('Enviando arquivo para a API OpenAI com purpose:', purpose);
 
-        // Chamar API da OpenAI para fazer upload do arquivo
+        // IMPORTANTE: Headers específicos para a API
         const openaiResponse = await fetch('https://api.openai.com/v1/files', {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${openaiKey}`,
                 'OpenAI-Beta': 'assistants=v2'
+                // Não incluir Content-Type, deixar o fetch configurar automaticamente para multipart/form-data
             },
             body: openaiFormData
         });
 
-        // Obter o corpo da resposta como texto para logging
         const responseText = await openaiResponse.text();
+        console.log('Headers de resposta:', Object.fromEntries(openaiResponse.headers.entries()));
+        console.log('Resposta bruta:', responseText);
 
         if (!openaiResponse.ok) {
-            console.error('Erro na resposta da API OpenAI:', {
-                status: openaiResponse.status,
-                statusText: openaiResponse.statusText,
-                data: responseText
-            });
-
             return NextResponse.json(
-                { error: `Erro na API da OpenAI: ${openaiResponse.statusText}`, details: responseText },
+                {
+                    error: `Erro na API da OpenAI: ${openaiResponse.statusText}`,
+                    details: responseText
+                },
                 { status: openaiResponse.status }
             );
         }

@@ -88,3 +88,4 @@ export interface DeleteVectorStoreFileResponse {
     object: string;
     deleted: boolean;
 }
+

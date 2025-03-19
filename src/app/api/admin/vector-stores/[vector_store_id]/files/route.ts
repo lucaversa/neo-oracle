@@ -13,16 +13,27 @@ export async function GET(
             return NextResponse.json({ error: 'ID da vector store é obrigatório' }, { status: 400 });
         }
 
+        // Obter parâmetros de consulta
+        const searchParams = request.nextUrl.searchParams;
+        const limit = parseInt(searchParams.get('limit') || '10', 10);
+        const after = searchParams.get('after');
+        const before = searchParams.get('before');
+
         // Obter chave da API da OpenAI
         const openaiKey = process.env.OPENAI_API_KEY;
         if (!openaiKey) {
             return NextResponse.json({ error: 'API key não configurada' }, { status: 500 });
         }
 
-        console.log('Enviando requisição GET para listar arquivos da vector store:', vector_store_id);
+        console.log(`Listando arquivos da vector store: ${vector_store_id} (limit: ${limit}, after: ${after || 'none'})`);
 
-        // Chamar API da OpenAI para listar arquivos da vector store
-        const openaiResponse = await fetch(`https://api.openai.com/v1/vector_stores/${vector_store_id}/files`, {
+        // Construir URL com parâmetros de paginação
+        let url = `https://api.openai.com/v1/vector_stores/${vector_store_id}/files?limit=${limit}`;
+        if (after) url += `&after=${after}`;
+        if (before) url += `&before=${before}`;
+
+        // Chamar API da OpenAI
+        const openaiResponse = await fetch(url, {
             method: 'GET',
             headers: {
                 'Authorization': `Bearer ${openaiKey}`,
@@ -46,7 +57,21 @@ export async function GET(
         }
 
         const data = await openaiResponse.json();
-        return NextResponse.json(data);
+        console.log('Resposta OpenAI Files:', {
+            count: data.data?.length,
+            has_more: data.has_more,
+            first_id: data.first_id,
+            last_id: data.last_id
+        });
+
+        // Passar todos os detalhes de paginação de volta para o cliente
+        return NextResponse.json({
+            data: data.data || [],
+            has_more: data.has_more || false,
+            first_id: data.first_id,
+            last_id: data.last_id,
+            object: data.object
+        });
     } catch (error) {
         console.error('Erro ao listar arquivos da vector store:', error);
         return NextResponse.json(
@@ -56,7 +81,7 @@ export async function GET(
     }
 }
 
-// POST endpoint para adicionar um arquivo a uma vector store
+// src/app/api/admin/vector-stores/[vector_store_id]/files/route.ts
 export async function POST(
     request: NextRequest,
     { params }: { params: { vector_store_id: string } }
@@ -82,23 +107,24 @@ export async function POST(
             return NextResponse.json({ error: 'ID do arquivo é obrigatório' }, { status: 400 });
         }
 
-        console.log('Enviando requisição POST para adicionar arquivo à vector store:', {
+        console.log('Associando arquivo à Vector Store:', {
             vector_store_id,
             file_id,
             chunking_strategy
         });
 
-        // Preparar corpo da requisição
+        // Corpo da requisição com valores obrigatórios
         const requestBody: any = {
             file_id
         };
 
-        // Adicionar estratégia de chunking se fornecida
         if (chunking_strategy) {
             requestBody.chunking_strategy = chunking_strategy;
         }
 
-        // Chamar API da OpenAI para adicionar arquivo à vector store
+        console.log('Corpo da requisição:', JSON.stringify(requestBody));
+
+        // Chamada à API da OpenAI
         const openaiResponse = await fetch(`https://api.openai.com/v1/vector_stores/${vector_store_id}/files`, {
             method: 'POST',
             headers: {
@@ -109,23 +135,22 @@ export async function POST(
             body: JSON.stringify(requestBody)
         });
 
-        // Obter o corpo da resposta como texto para logging
+        console.log('Status da resposta:', openaiResponse.status);
         const responseText = await openaiResponse.text();
+        console.log('Resposta bruta:', responseText);
 
         if (!openaiResponse.ok) {
-            console.error('Erro na resposta da API OpenAI:', {
-                status: openaiResponse.status,
-                statusText: openaiResponse.statusText,
-                data: responseText
-            });
-
             return NextResponse.json(
-                { error: `Erro na API da OpenAI: ${openaiResponse.statusText}`, details: responseText },
+                {
+                    error: `Erro na API da OpenAI: ${openaiResponse.statusText}`,
+                    details: responseText,
+                    status: openaiResponse.status
+                },
                 { status: openaiResponse.status }
             );
         }
 
-        // Parsear a resposta de texto para JSON
+        // Parsear a resposta
         let data;
         try {
             data = JSON.parse(responseText);

@@ -59,10 +59,15 @@ function VectorStoresPage() {
 
     const handleToggleStatus = async (vectorStore: VectorStore, newStatus: boolean) => {
         try {
+            console.log('[PAGE] Alterando status da vector store:', vectorStore.vector_store_id);
+            console.log('[PAGE] Novo status:', newStatus);
+
             const updatedVectorStore = await updateVectorStore(vectorStore.vector_store_id, {
                 ...vectorStore,
                 is_searchable: newStatus
             });
+
+            console.log('[PAGE] Vector store atualizada:', updatedVectorStore);
 
             setVectorStores(prev =>
                 prev.map(vs =>
@@ -71,8 +76,10 @@ function VectorStoresPage() {
                         : vs
                 )
             );
+
+            // Não retorna nada explicitamente (retorna void)
         } catch (error) {
-            console.error('Erro ao atualizar status:', error);
+            console.error('[PAGE] Erro ao atualizar status:', error);
             throw error;
         }
     };

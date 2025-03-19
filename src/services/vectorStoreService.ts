@@ -1,6 +1,6 @@
-// src/services/vectorStoreService.ts (Adição de funções para gerenciamento de arquivos)
+// src/services/vectorStoreService.ts
 
-import { CreateVectorStoreRequest, VectorStore, OpenAIVectorStoreResponse, OpenAIVectorStoreListResponse, OpenAIFile, OpenAIFileListResponse, VectorStoreFile, CreateVectorStoreFileResponse } from "@/types/admin";
+import { CreateVectorStoreRequest, VectorStore, VectorStoreFile } from "@/types/admin";
 
 // Base URL para as requisições de API
 const API_BASE_URL = '/api/admin';
@@ -8,6 +8,8 @@ const API_BASE_URL = '/api/admin';
 // Funções existentes para gerenciamento de vector stores
 export async function listVectorStores(): Promise<VectorStore[]> {
     try {
+        console.log('[SERVICE] Buscando lista de vector stores');
+
         const response = await fetch(`${API_BASE_URL}/vector-stores`, {
             method: 'GET',
             headers: {
@@ -20,10 +22,58 @@ export async function listVectorStores(): Promise<VectorStore[]> {
             throw new Error(errorData.error || `Error: ${response.status}`);
         }
 
-        const data: OpenAIVectorStoreListResponse = await response.json();
+        const data = await response.json();
+        console.log('[SERVICE] Resposta da API:', data);
 
-        // Converter resposta da OpenAI para o formato da aplicação
-        const vectorStores = data.data.map(item => ({
+        // Buscar dados complementares do Supabase
+        // Implementamos um novo endpoint para isso ou modificamos nosso app para buscar direto do Supabase
+        try {
+            // Fazendo um novo request para buscar dados do banco
+            const dbResponse = await fetch('/api/admin/vector-stores-db', {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            if (dbResponse.ok) {
+                const dbData = await dbResponse.json();
+                console.log('[SERVICE] Dados complementares do banco:', dbData);
+
+                // Criar um mapa de vector stores do banco pelo ID
+                const dbVectorStores = new Map();
+                if (dbData.data && Array.isArray(dbData.data)) {
+                    dbData.data.forEach((item: any) => {
+                        dbVectorStores.set(item.vector_store_id, item);
+                    });
+                }
+
+                // Converter resposta da OpenAI para o formato da aplicação, mas usando dados do banco quando disponíveis
+                const vectorStores = data.data.map((item: any) => {
+                    const dbItem = dbVectorStores.get(item.id);
+
+                    return {
+                        vector_store_id: item.id,
+                        name: item.name,
+                        description: dbItem?.description || '',
+                        created_at: new Date(item.created_at * 1000).toISOString(),
+                        updated_at: new Date(item.last_active_at * 1000).toISOString(),
+                        is_active: dbItem?.is_active !== undefined ? dbItem.is_active : (item.status === 'completed'),
+                        is_searchable: dbItem?.is_searchable !== undefined ? dbItem.is_searchable : true,
+                        created_by: dbItem?.created_by || null
+                    };
+                });
+
+                console.log('[SERVICE] Vector stores processadas com dados do banco:', vectorStores);
+                return vectorStores;
+            }
+        } catch (dbError) {
+            console.warn('[SERVICE] Erro ao buscar dados complementares:', dbError);
+            // Continuar com os dados da API OpenAI
+        }
+
+        // Fallback: Usar apenas os dados da OpenAI se não conseguir dados do banco
+        const vectorStores = data.data.map((item: any) => ({
             vector_store_id: item.id,
             name: item.name,
             description: '',
@@ -35,7 +85,7 @@ export async function listVectorStores(): Promise<VectorStore[]> {
 
         return vectorStores;
     } catch (error) {
-        console.error('Error listing vector stores:', error);
+        console.error('[SERVICE] Error listing vector stores:', error);
         throw error;
     }
 }
@@ -54,17 +104,22 @@ export async function getVectorStore(id: string): Promise<VectorStore> {
             throw new Error(errorData.error || `Error: ${response.status}`);
         }
 
-        const data: OpenAIVectorStoreResponse = await response.json();
+        const data = await response.json();
 
-        // Converter resposta da OpenAI para o formato da aplicação
+        // Se a resposta já estiver no formato esperado (mesclando dados do Supabase)
+        if (data.vector_store_id) {
+            return data as VectorStore;
+        }
+
+        // Caso contrário, converter resposta da OpenAI para o formato da aplicação
         const vectorStore: VectorStore = {
             vector_store_id: data.id,
             name: data.name,
-            description: '',
+            description: data.description || '',
             created_at: new Date(data.created_at * 1000).toISOString(),
             updated_at: new Date(data.last_active_at * 1000).toISOString(),
             is_active: data.status === 'completed',
-            is_searchable: true // Assumindo que é pesquisável por padrão
+            is_searchable: data.is_searchable !== undefined ? data.is_searchable : true
         };
 
         return vectorStore;
@@ -76,8 +131,58 @@ export async function getVectorStore(id: string): Promise<VectorStore> {
 
 export async function createVectorStore(data: CreateVectorStoreRequest, userId: string): Promise<VectorStore> {
     try {
+        console.log('[SERVICE] Criando vector store com dados:', { ...data, created_by: userId });
+
         const response = await fetch(`${API_BASE_URL}/vector-stores`, {
             method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                ...data,
+                created_by: userId
+            })
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || `Error: ${response.status}`);
+        }
+
+        const responseData = await response.json();
+        console.log('[SERVICE] Resposta da criação:', responseData);
+
+        // Se os dados já estiverem no formato esperado (incluindo os dados do Supabase)
+        if (responseData.vector_store_id) {
+            return responseData as VectorStore;
+        }
+
+        // Caso contrário, converter resposta para o formato da aplicação
+        const vectorStore: VectorStore = {
+            vector_store_id: responseData.id,
+            name: responseData.name,
+            description: data.description || '',
+            created_at: responseData.created_at ? new Date(responseData.created_at * 1000).toISOString() : new Date().toISOString(),
+            updated_at: responseData.updated_at || new Date().toISOString(),
+            is_active: responseData.status === 'completed' || true,
+            is_searchable: data.is_searchable !== false,
+            created_by: userId
+        };
+
+        return vectorStore;
+    } catch (error) {
+        console.error('[SERVICE] Error creating vector store:', error);
+        throw error;
+    }
+}
+
+export async function updateVectorStore(id: string, data: Partial<VectorStore>): Promise<VectorStore> {
+    try {
+        console.log('[SERVICE] Atualizando vector store:', id, 'com dados:', data);
+
+        // Usar PATCH para atualizar parcialmente
+        const response = await fetch(`${API_BASE_URL}/vector-stores/${id}`, {
+            method: 'PATCH',
             headers: {
                 'Content-Type': 'application/json'
             },
@@ -86,87 +191,24 @@ export async function createVectorStore(data: CreateVectorStoreRequest, userId: 
 
         if (!response.ok) {
             const errorData = await response.json();
+            console.error('[SERVICE] Erro na resposta da API:', errorData);
             throw new Error(errorData.error || `Error: ${response.status}`);
         }
 
-        const responseData: OpenAIVectorStoreResponse = await response.json();
+        const updatedData = await response.json();
+        console.log('[SERVICE] Resposta da atualização:', updatedData);
 
-        // Converter resposta da OpenAI para o formato da aplicação
-        const vectorStore: VectorStore = {
-            vector_store_id: responseData.id,
-            name: responseData.name,
-            description: data.description || '',
-            created_at: new Date(responseData.created_at * 1000).toISOString(),
-            updated_at: new Date(responseData.created_at * 1000).toISOString(),
-            is_active: responseData.status === 'completed',
-            is_searchable: data.is_searchable !== false,
-            created_by: userId
-        };
-
-        return vectorStore;
+        return updatedData as VectorStore;
     } catch (error) {
-        console.error('Error creating vector store:', error);
-        throw error;
-    }
-}
-
-export async function updateVectorStore(id: string, data: Partial<VectorStore>): Promise<VectorStore> {
-    try {
-        // Esta é uma função local, já que a API da OpenAI não suporta atualização direta
-        // Só atualizamos no banco de dados local no Supabase
-
-        const response = await fetch(`${API_BASE_URL}/vector-stores/${id}`, {
-            method: 'GET',
-            headers: {
-                'Content-Type': 'application/json'
-            }
-        });
-
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error || `Error: ${response.status}`);
-        }
-
-        const responseData: OpenAIVectorStoreResponse = await response.json();
-
-        // Converter resposta da OpenAI para o formato da aplicação e aplicar atualizações
-        const vectorStore: VectorStore = {
-            vector_store_id: responseData.id,
-            name: responseData.name,
-            description: data.description || '',
-            created_at: new Date(responseData.created_at * 1000).toISOString(),
-            updated_at: new Date().toISOString(), // Data atual para a atualização
-            is_active: responseData.status === 'completed',
-            is_searchable: data.is_searchable !== undefined ? data.is_searchable : true
-        };
-
-        return vectorStore;
-    } catch (error) {
-        console.error('Error updating vector store:', error);
+        console.error('[SERVICE] Erro ao atualizar vector store:', error);
         throw error;
     }
 }
 
 export async function deleteVectorStore(id: string): Promise<void> {
     try {
-        console.log(`Iniciando exclusão da Vector Store ${id} e seus arquivos...`);
+        console.log(`[SERVICE] Iniciando exclusão da Vector Store ${id}...`);
 
-        // Primeiro, obter todos os arquivos da vector store
-        const files = await listVectorStoreFiles(id);
-        console.log(`Encontrados ${files.length} arquivos para excluir`);
-
-        // Excluir cada arquivo da vector store e depois excluir o arquivo completamente
-        for (const file of files) {
-            console.log(`Removendo arquivo ${file.id} (${file.filename}) da Vector Store`);
-            await deleteFileFromVectorStore(id, file.id);
-
-            // Excluir também o arquivo completamente para liberar espaço
-            console.log(`Excluindo arquivo ${file.id} completamente`);
-            await deleteFile(file.id);
-        }
-
-        // Agora excluir a vector store
-        console.log(`Excluindo a Vector Store ${id}`);
         const response = await fetch(`${API_BASE_URL}/vector-stores/${id}`, {
             method: 'DELETE',
             headers: {
@@ -179,13 +221,15 @@ export async function deleteVectorStore(id: string): Promise<void> {
             throw new Error(errorData.error || `Error: ${response.status}`);
         }
 
-        console.log(`Vector Store ${id} excluída com sucesso!`);
+        const result = await response.json();
+        console.log('[SERVICE] Resultado da exclusão:', result);
     } catch (error) {
-        console.error('Error deleting vector store:', error);
+        console.error('[SERVICE] Error deleting vector store:', error);
         throw error;
     }
 }
 
+// Listar arquivos de uma vector store
 export const listVectorStoreFiles = async (
     vectorStoreId: string,
     page: number = 1,
@@ -340,7 +384,6 @@ export const uploadFileToVectorStore = async (vectorStoreId: string, file: File)
     }
 };
 
-// Remover arquivo de uma vector store
 export async function deleteFileFromVectorStore(
     vectorStoreId: string,
     fileId: string
@@ -365,7 +408,6 @@ export async function deleteFileFromVectorStore(
     }
 }
 
-// Excluir arquivo completamente (após removê-lo da vector store)
 export async function deleteFile(fileId: string): Promise<boolean> {
     try {
         const response = await fetch(`${API_BASE_URL}/files/${fileId}`, {

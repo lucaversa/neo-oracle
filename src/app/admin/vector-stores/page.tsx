@@ -43,6 +43,31 @@ function VectorStoresPage() {
         }
     };
 
+    const handleSetDefaultVectorStore = async (vectorStore: VectorStore) => {
+        try {
+            console.log('[PAGE] Definindo vector store padrão:', vectorStore.vector_store_id);
+
+            const updatedVectorStore = await updateVectorStore(vectorStore.vector_store_id, {
+                ...vectorStore,
+                is_default: true
+            });
+
+            console.log('[PAGE] Vector store definida como padrão:', updatedVectorStore);
+
+            // Update all vector stores to reflect the new default
+            setVectorStores(prev =>
+                prev.map(vs => ({
+                    ...vs,
+                    is_default: vs.vector_store_id === updatedVectorStore.vector_store_id
+                }))
+            );
+
+        } catch (error) {
+            console.error('[PAGE] Erro ao definir vector store padrão:', error);
+            throw error;
+        }
+    };
+
     const handleCreateVectorStore = async (data: CreateVectorStoreRequest) => {
         if (!user) {
             throw new Error('Usuário não autenticado');
@@ -382,6 +407,7 @@ function VectorStoresPage() {
                                             vectorStore={vectorStore}
                                             onDelete={setDeleteTarget}
                                             onToggleStatus={handleToggleStatus}
+                                            onSetDefault={handleSetDefaultVectorStore}
                                         />
                                     ))}
                                 </div>

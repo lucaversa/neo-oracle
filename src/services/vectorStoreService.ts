@@ -60,6 +60,7 @@ export async function listVectorStores(): Promise<VectorStore[]> {
                         updated_at: new Date(item.last_active_at * 1000).toISOString(),
                         is_active: dbItem?.is_active !== undefined ? dbItem.is_active : (item.status === 'completed'),
                         is_searchable: dbItem?.is_searchable !== undefined ? dbItem.is_searchable : true,
+                        is_default: dbItem?.is_default || false, // Adicionando suporte ao campo is_default
                         created_by: dbItem?.created_by || null
                     };
                 });
@@ -80,12 +81,40 @@ export async function listVectorStores(): Promise<VectorStore[]> {
             created_at: new Date(item.created_at * 1000).toISOString(),
             updated_at: new Date(item.last_active_at * 1000).toISOString(),
             is_active: item.status === 'completed',
-            is_searchable: true // Assumindo que todas são pesquisáveis por padrão
+            is_searchable: true, // Assumindo que todas são pesquisáveis por padrão
+            is_default: false // Assumindo que nenhuma é padrão por default
         }));
 
         return vectorStores;
     } catch (error) {
         console.error('[SERVICE] Error listing vector stores:', error);
+        throw error;
+    }
+}
+
+// Nova função para obter apenas vector stores pesquisáveis
+export async function getSearchableVectorStores(): Promise<VectorStore[]> {
+    try {
+        console.log('[SERVICE] Buscando vector stores pesquisáveis');
+
+        const response = await fetch(`${API_BASE_URL}/vector-stores-db/searchable`, {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || `Error: ${response.status}`);
+        }
+
+        const data = await response.json();
+        console.log('[SERVICE] Vector stores pesquisáveis:', data);
+
+        return data as VectorStore[];
+    } catch (error) {
+        console.error('[SERVICE] Error getting searchable vector stores:', error);
         throw error;
     }
 }
@@ -119,7 +148,8 @@ export async function getVectorStore(id: string): Promise<VectorStore> {
             created_at: new Date(data.created_at * 1000).toISOString(),
             updated_at: new Date(data.last_active_at * 1000).toISOString(),
             is_active: data.status === 'completed',
-            is_searchable: data.is_searchable !== undefined ? data.is_searchable : true
+            is_searchable: data.is_searchable !== undefined ? data.is_searchable : true,
+            is_default: data.is_default || false
         };
 
         return vectorStore;
@@ -166,6 +196,7 @@ export async function createVectorStore(data: CreateVectorStoreRequest, userId: 
             updated_at: responseData.updated_at || new Date().toISOString(),
             is_active: responseData.status === 'completed' || true,
             is_searchable: data.is_searchable !== false,
+            is_default: data.is_default || false,
             created_by: userId
         };
 
@@ -201,6 +232,19 @@ export async function updateVectorStore(id: string, data: Partial<VectorStore>):
         return updatedData as VectorStore;
     } catch (error) {
         console.error('[SERVICE] Erro ao atualizar vector store:', error);
+        throw error;
+    }
+}
+
+// Nova função para definir uma vector store como padrão
+export async function setDefaultVectorStore(id: string): Promise<VectorStore> {
+    try {
+        console.log('[SERVICE] Definindo vector store como padrão:', id);
+
+        // Usar a função de atualização existente para definir is_default como true
+        return await updateVectorStore(id, { is_default: true });
+    } catch (error) {
+        console.error('[SERVICE] Erro ao definir vector store padrão:', error);
         throw error;
     }
 }

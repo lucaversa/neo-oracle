@@ -2,21 +2,22 @@
 
 // Interfaces existentes
 export interface VectorStore {
-    id?: number;
     vector_store_id: string;
     name: string;
-    description?: string | null;
+    description?: string;
     is_active: boolean;
     is_searchable: boolean;
-    created_by?: string | null;
+    is_default?: boolean;  // New field to mark default vector store
     created_at: string;
-    updated_at?: string | null;
+    updated_at?: string;
+    created_by?: string;
 }
 
 export interface CreateVectorStoreRequest {
     name: string;
     description?: string;
     is_searchable?: boolean;
+    is_default?: boolean;  // Allow setting default on creation
 }
 
 // Novas interfaces para gestão de arquivos

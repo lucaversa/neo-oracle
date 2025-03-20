@@ -11,14 +11,17 @@ interface VectorStoreCardProps {
     vectorStore: VectorStore;
     onDelete: (vectorStore: VectorStore) => void;
     onToggleStatus: (vectorStore: VectorStore, newStatus: boolean) => Promise<void>;
+    onSetDefault?: (vectorStore: VectorStore) => Promise<void>;
 }
 
 export default function VectorStoreCard({
     vectorStore,
     onDelete,
-    onToggleStatus
+    onToggleStatus,
+    onSetDefault
 }: VectorStoreCardProps) {
     const [isTogglingStatus, setIsTogglingStatus] = useState(false);
+    const [isSettingDefault, setIsSettingDefault] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const router = useRouter();
 
@@ -39,6 +42,24 @@ export default function VectorStoreCard({
             setError('Falha ao alterar status. Tente novamente.');
         } finally {
             setIsTogglingStatus(false);
+        }
+    };
+
+    const handleSetDefault = async () => {
+        if (!onSetDefault || vectorStore.is_default) return;
+
+        try {
+            setIsSettingDefault(true);
+            setError(null);
+
+            await onSetDefault(vectorStore);
+
+            console.log('[CARD] Vector store definida como padrão com sucesso');
+        } catch (error) {
+            console.error('[CARD] Erro ao definir vector store como padrão:', error);
+            setError('Falha ao definir como padrão. Tente novamente.');
+        } finally {
+            setIsSettingDefault(false);
         }
     };
 
@@ -112,6 +133,19 @@ export default function VectorStoreCard({
                             textOverflow: 'ellipsis'
                         }}>
                             {vectorStore.name}
+                            {vectorStore.is_default && (
+                                <span style={{
+                                    marginLeft: '8px',
+                                    padding: '2px 8px',
+                                    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                                    color: 'var(--success-color)',
+                                    borderRadius: '999px',
+                                    fontSize: '11px',
+                                    fontWeight: '600'
+                                }}>
+                                    Padrão
+                                </span>
+                            )}
                         </h3>
                         <div style={{
                             display: 'flex',
@@ -238,7 +272,7 @@ export default function VectorStoreCard({
                 alignItems: 'center',
                 gap: '8px'
             }}>
-                <div>
+                <div style={{ display: 'flex', gap: '8px' }}>
                     <button
                         onClick={handleToggleStatus}
                         disabled={isTogglingStatus}
@@ -301,6 +335,61 @@ export default function VectorStoreCard({
                         )}
                         {vectorStore.is_searchable ? 'Desativar busca' : 'Ativar busca'}
                     </button>
+
+                    {/* Botão de definir como padrão - Novo */}
+                    {!vectorStore.is_default && onSetDefault && (
+                        <button
+                            onClick={handleSetDefault}
+                            disabled={isSettingDefault || !vectorStore.is_searchable}
+                            style={{
+                                fontSize: '13px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                color: vectorStore.is_searchable ? 'var(--success-color)' : 'var(--text-tertiary)',
+                                padding: '6px 12px',
+                                borderRadius: '6px',
+                                border: '1px solid var(--border-color)',
+                                backgroundColor: 'transparent',
+                                cursor: vectorStore.is_searchable ? (isSettingDefault ? 'not-allowed' : 'pointer') : 'not-allowed',
+                                opacity: vectorStore.is_searchable ? 1 : 0.5,
+                                transition: 'all 0.2s'
+                            }}
+                            title={!vectorStore.is_searchable ? 'Vector store deve ser pesquisável para ser definida como padrão' : ''}
+                        >
+                            {isSettingDefault ? (
+                                <svg
+                                    style={{
+                                        width: '14px',
+                                        height: '14px',
+                                        animation: 'spin 1s linear infinite'
+                                    }}
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                >
+                                    <circle
+                                        style={{ opacity: 0.25 }}
+                                        cx="12"
+                                        cy="12"
+                                        r="10"
+                                        stroke="currentColor"
+                                        strokeWidth="4"
+                                    ></circle>
+                                    <path
+                                        style={{ opacity: 0.75 }}
+                                        fill="currentColor"
+                                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                                    ></path>
+                                </svg>
+                            ) : (
+                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path>
+                                </svg>
+                            )}
+                            Definir como padrão
+                        </button>
+                    )}
                 </div>
                 <div>
                     <button

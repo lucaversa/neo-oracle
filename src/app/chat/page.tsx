@@ -33,6 +33,8 @@ export default function ChatPage() {
     const {
         messages,
         sessionId,
+        vectorStoreId,       // Adicionado: ID da vector store selecionada
+        selectVectorStore,   // Adicionado: função para selecionar vector store
         loading,
         error,
         sendMessage,
@@ -211,6 +213,12 @@ export default function ChatPage() {
     // Função para excluir uma sessão de chat
     const handleDeleteSession = async (sessionId: string) => {
         return await deleteSession(sessionId);
+    };
+
+    // Função para selecionar uma vector store
+    const handleSelectVectorStore = (id: string) => {
+        console.log("Selecionando vector store:", id);
+        selectVectorStore(id);
     };
 
     // MODIFICADO: handleSendMessage com verificações para primeira mensagem
@@ -567,6 +575,9 @@ export default function ChatPage() {
                                         ? "Limite de mensagens atingido. Crie uma nova conversa."
                                         : "Como posso te ajudar?"
                             }
+                            // Novas props para o seletor de vector store
+                            onSelectVectorStore={handleSelectVectorStore}
+                            selectedVectorStoreId={vectorStoreId}
                         />
                     </div>
                 )}

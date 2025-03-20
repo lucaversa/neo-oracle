@@ -10,6 +10,8 @@ const MAX_HUMAN_MESSAGES_PER_SESSION = 5;
 interface UseChatReturn {
     messages: ChatMessage[];
     sessionId: string;
+    vectorStoreId: string | null; // Novo: ID da vector store selecionada
+    selectVectorStore: (id: string) => void; // Nova função para selecionar vector store
     loading: boolean;
     error: string | null;
     sendMessage: (content: string) => Promise<void>;
@@ -29,12 +31,14 @@ interface UseChatReturn {
     streamingContent: string;
     searchableVectorStores: string[];
     setSearchableVectorStores: (ids: string[]) => void;
-    updateSessionTitle: (sessionId: string, title: string) => void; // Nova função
+    updateSessionTitle: (sessionId: string, title: string) => void;
 }
 
 export function useChat(userId?: string): UseChatReturn {
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [sessionId, setSessionId] = useState<string>('');
+    const [vectorStoreId, setVectorStoreId] = useState<string | null>(null); // Novo estado para vector store selecionada
+    const [defaultVectorStoreId, setDefaultVectorStoreId] = useState<string | null>(null); // Estado para vector store padrão
     const [activeSessions, setActiveSessions] = useState<string[]>([]);
     const [sessionInfos, setSessionInfos] = useState<Map<string, SessionInfo>>(new Map());
     const [loading, setLoading] = useState<boolean>(true);
@@ -62,13 +66,36 @@ export function useChat(userId?: string): UseChatReturn {
         messagesRef.current = messages;
     }, [messages]);
 
+    // Efeito para carregar o ID da vector store da sessão local
+    useEffect(() => {
+        if (sessionId) {
+            // Tentar carregar o ID da vector store do armazenamento local
+            const savedVectorStoreId = localStorage.getItem(`chat_vectorStoreId_${sessionId}`);
+            if (savedVectorStoreId) {
+                setVectorStoreId(savedVectorStoreId);
+            } else if (defaultVectorStoreId) {
+                // Se não houver um ID salvo, usar o padrão
+                setVectorStoreId(defaultVectorStoreId);
+            }
+        }
+    }, [sessionId, defaultVectorStoreId]);
+
+    // Função para selecionar vector store
+    const selectVectorStore = useCallback((id: string) => {
+        setVectorStoreId(id);
+
+        // Se temos uma sessão ativa, salvar a preferência
+        if (sessionId) {
+            localStorage.setItem(`chat_vectorStoreId_${sessionId}`, id);
+        }
+    }, [sessionId]);
 
     // Adicionar este useEffect na parte inicial do hook useChat, junto com os outros useEffects
     useEffect(() => {
         // Função para carregar vector stores pesquisáveis
         const loadSearchableVectorStores = async () => {
             try {
-                console.log('Carregando vector stores pesquisáveis...');
+                console.log('Carregando vector stores pesquisáveis e padrão...');
                 const response = await fetch('/api/openai/search-config');
 
                 if (!response.ok) {
@@ -85,6 +112,17 @@ export function useChat(userId?: string): UseChatReturn {
                     console.log('Nenhuma vector store pesquisável encontrada');
                     setSearchableVectorStores([]);
                 }
+
+                // Verificar se há uma vector store padrão
+                if (data.defaultId) {
+                    console.log('Vector store padrão definida:', data.defaultId);
+                    setDefaultVectorStoreId(data.defaultId);
+
+                    // Se não houver uma vector store selecionada, usar a padrão
+                    if (!vectorStoreId) {
+                        setVectorStoreId(data.defaultId);
+                    }
+                }
             } catch (error) {
                 console.error('Erro ao carregar vector stores pesquisáveis:', error);
                 setSearchableVectorStores([]);
@@ -95,7 +133,7 @@ export function useChat(userId?: string): UseChatReturn {
         if (userId) {
             loadSearchableVectorStores();
         }
-    }, [userId]); // Recarregar quando mudar de usuário
+    }, [userId, vectorStoreId]); // Recarregar quando mudar de usuário
 
     // Função para resetar o estado de processamento manualmente
     const resetProcessingState = useCallback(() => {
@@ -608,6 +646,11 @@ export function useChat(userId?: string): UseChatReturn {
             setMessages([]);
             setStreamingContent('');
 
+            // Usar a vector store padrão
+            if (defaultVectorStoreId) {
+                setVectorStoreId(defaultVectorStoreId);
+            }
+
             // Atualizar as informações da sessão com título simplificado
             const updatedInfos = new Map(sessionInfos);
             updatedInfos.set(newSessionId, {
@@ -680,6 +723,14 @@ export function useChat(userId?: string): UseChatReturn {
             setHasEmptyChat(false);
             setSessionId(trimmedNewSessionId);
             setError(null);
+
+            // Carregar o vector store ID para esta sessão
+            const savedVectorStoreId = localStorage.getItem(`chat_vectorStoreId_${trimmedNewSessionId}`);
+            if (savedVectorStoreId) {
+                setVectorStoreId(savedVectorStoreId);
+            } else if (defaultVectorStoreId) {
+                setVectorStoreId(defaultVectorStoreId);
+            }
 
             // Carregar mensagens para a nova sessão
             loadMessagesForSession(trimmedNewSessionId, true);
@@ -763,6 +814,9 @@ export function useChat(userId?: string): UseChatReturn {
             const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 segundos de timeout
 
             try {
+                // Preparar vector store IDs para pesquisa
+                const vectorStoresForSearch = vectorStoreId ? [vectorStoreId] : searchableVectorStores;
+
                 // Iniciar uma solicitação fetch para obter o stream
                 const response = await fetch('/api/openai', {
                     method: 'POST',
@@ -773,7 +827,7 @@ export function useChat(userId?: string): UseChatReturn {
                         messages: allMessages,
                         sessionId: trimmedSessionId,
                         userId: userId || 'anonymous',
-                        vectorStoreIds: searchableVectorStores // Incluir vector stores pesquisáveis
+                        vectorStoreIds: vectorStoresForSearch // Incluir vector stores pesquisáveis
                     }),
                     signal: controller.signal
                 });
@@ -1177,6 +1231,8 @@ export function useChat(userId?: string): UseChatReturn {
     return {
         messages,
         sessionId,
+        vectorStoreId,
+        selectVectorStore,
         loading,
         error,
         sendMessage,

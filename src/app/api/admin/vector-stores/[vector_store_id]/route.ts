@@ -85,6 +85,7 @@ export async function GET(
     }
 }
 
+// Modified PATCH function in src/app/api/admin/vector-stores/[vector_store_id]/route.ts
 export async function PATCH(
     request: NextRequest,
     { params }: { params: { vector_store_id: string } }
@@ -122,7 +123,8 @@ export async function PATCH(
                         name: requestData.name || `Vector Store ${vector_store_id.substring(0, 8)}`,
                         description: requestData.description || null,
                         is_active: true,
-                        is_searchable: requestData.is_searchable !== undefined ? requestData.is_searchable : true
+                        is_searchable: requestData.is_searchable !== undefined ? requestData.is_searchable : true,
+                        is_default: requestData.is_default || false
                     };
 
                     console.log('[DEBUG] Inserindo novo registro:', insertData);
@@ -156,6 +158,27 @@ export async function PATCH(
 
             console.log('[DEBUG] Registro existente encontrado:', existingData);
 
+            // Handle setting this vector store as default
+            if (requestData.is_default === true) {
+                try {
+                    // First, unset any existing default vector store
+                    const { error: resetError } = await supabase
+                        .from('vector_stores')
+                        .update({ is_default: false })
+                        .neq('vector_store_id', vector_store_id);
+
+                    if (resetError) {
+                        console.error('[DEBUG] Erro ao resetar vector stores padrão:', resetError);
+                        // Continue anyway to set this one as default
+                    } else {
+                        console.log('[DEBUG] Resetado outras vector stores padrão com sucesso');
+                    }
+                } catch (resetErr) {
+                    console.error('[DEBUG] Exceção ao resetar vector stores padrão:', resetErr);
+                    // Continue anyway
+                }
+            }
+
             // Preparar dados para atualização
             const updateData: any = {};
 
@@ -164,6 +187,7 @@ export async function PATCH(
             if (requestData.description !== undefined) updateData.description = requestData.description;
             if (requestData.is_active !== undefined) updateData.is_active = requestData.is_active;
             if (requestData.is_searchable !== undefined) updateData.is_searchable = requestData.is_searchable;
+            if (requestData.is_default !== undefined) updateData.is_default = requestData.is_default;
 
             console.log('[DEBUG] Dados para atualização:', updateData);
 

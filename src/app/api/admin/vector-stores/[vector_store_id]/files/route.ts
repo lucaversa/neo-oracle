@@ -1,4 +1,3 @@
-// src/app/api/admin/vector-stores/[vector_store_id]/files/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 
 // Interface para definir a estrutura do corpo da requisição
@@ -11,13 +10,12 @@ interface VectorStoreFileRequest {
 }
 
 // GET endpoint para listar arquivos de uma vector store
-export async function GET(
-    request: NextRequest,
-    { params }: { params: { vector_store_id: string } }
-) {
-    try {
-        const { vector_store_id } = params;
+export async function GET(request: NextRequest, context: unknown) {
+    // Faz a asserção do tipo esperado para o context
+    const { params } = context as { params: { vector_store_id: string } };
+    const { vector_store_id } = params;
 
+    try {
         if (!vector_store_id) {
             return NextResponse.json({ error: 'ID da vector store é obrigatório' }, { status: 400 });
         }
@@ -90,14 +88,12 @@ export async function GET(
     }
 }
 
-// src/app/api/admin/vector-stores/[vector_store_id]/files/route.ts
-export async function POST(
-    request: NextRequest,
-    { params }: { params: { vector_store_id: string } }
-) {
-    try {
-        const { vector_store_id } = params;
+// POST endpoint para associar um arquivo à vector store
+export async function POST(request: NextRequest, context: unknown) {
+    const { params } = context as { params: { vector_store_id: string } };
+    const { vector_store_id } = params;
 
+    try {
         if (!vector_store_id) {
             return NextResponse.json({ error: 'ID da vector store é obrigatório' }, { status: 400 });
         }
@@ -164,7 +160,6 @@ export async function POST(
         try {
             data = JSON.parse(responseText);
         } catch {
-            // Omitindo o parâmetro de erro já que não o estamos utilizando
             return NextResponse.json(
                 { error: 'Erro ao analisar resposta da API OpenAI', details: responseText },
                 { status: 500 }

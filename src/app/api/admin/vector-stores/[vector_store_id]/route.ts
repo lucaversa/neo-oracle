@@ -11,18 +11,12 @@ interface VectorStoreUpdateData {
     is_default?: boolean;
 }
 
-type RouteContext = {
-    params: {
-        vector_store_id: string
-    }
-}
-
-export async function GET(
-    request: Request,
-    context: RouteContext
-) {
+export async function GET(request: Request) {
     try {
-        const { vector_store_id } = context.params;
+        // Extrair o ID diretamente da URL
+        const url = new URL(request.url);
+        const pathParts = url.pathname.split('/');
+        const vector_store_id = pathParts[pathParts.length - 1];
 
         if (!vector_store_id) {
             return NextResponse.json({ error: 'ID do vector_store é obrigatório' }, { status: 400 });
@@ -101,12 +95,12 @@ export async function GET(
 }
 
 // Modified PATCH function
-export async function PATCH(
-    request: Request,
-    context: RouteContext
-) {
+export async function PATCH(request: Request) {
     try {
-        const { vector_store_id } = context.params;
+        // Extrair o ID diretamente da URL
+        const url = new URL(request.url);
+        const pathParts = url.pathname.split('/');
+        const vector_store_id = pathParts[pathParts.length - 1];
 
         if (!vector_store_id) {
             return NextResponse.json({ error: 'ID do vector_store é obrigatório' }, { status: 400 });
@@ -250,12 +244,12 @@ export async function PATCH(
     }
 }
 
-export async function DELETE(
-    request: Request,
-    context: RouteContext
-) {
+export async function DELETE(request: Request) {
     try {
-        const { vector_store_id } = context.params;
+        // Extrair o ID diretamente da URL
+        const url = new URL(request.url);
+        const pathParts = url.pathname.split('/');
+        const vector_store_id = pathParts[pathParts.length - 1];
 
         if (!vector_store_id) {
             return NextResponse.json({ error: 'ID do vector_store é obrigatório' }, { status: 400 });

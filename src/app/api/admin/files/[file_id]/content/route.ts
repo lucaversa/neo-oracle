@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-export async function GET(request: NextRequest, context: unknown) {
-    const { file_id } = (context as { params: { file_id: string } }).params;
+type Params = Promise<{ file_id: string }>;
+
+export async function GET(
+    request: NextRequest,
+    context: { params: Params }
+) {
+    const { file_id } = await context.params;
 
     try {
         if (!file_id) {

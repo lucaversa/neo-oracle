@@ -1,5 +1,5 @@
 // src/app/api/admin/vector-stores/[vector_store_id]/route.ts
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 
 // Interface para os dados de atualização de vector store

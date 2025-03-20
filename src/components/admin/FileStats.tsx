@@ -2,7 +2,6 @@
 'use client'
 
 import { useState, useEffect } from 'react';
-import { VectorStoreFile } from '@/types/admin';
 import { listVectorStoreFiles } from '@/services/vectorStoreService';
 
 interface FileStatsProps {
@@ -34,7 +33,8 @@ export default function FileStats({ vectorStoreId, refreshTrigger = 0 }: FileSta
             setLoading(true);
             setError(null);
 
-            const files = await listVectorStoreFiles(vectorStoreId, 1, 100);
+            // Updated function call to match the new signature (no page parameter)
+            const files = await listVectorStoreFiles(vectorStoreId, 100);
             console.log('Files for stats:', files);
 
             // Calcular estatísticas
@@ -47,6 +47,7 @@ export default function FileStats({ vectorStoreId, refreshTrigger = 0 }: FileSta
                 fileTypes: {} as Record<string, number>
             };
 
+            // Rest of your function remains the same
             files.forEach(file => {
                 // Contagem de status
                 if (file.status === 'processed' || file.status === 'completed') {

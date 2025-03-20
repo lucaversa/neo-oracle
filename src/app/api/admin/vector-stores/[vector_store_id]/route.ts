@@ -2,6 +2,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 
+// Interface para os dados de atualização de vector store
+interface VectorStoreUpdateData {
+    name?: string;
+    description?: string | null;
+    is_active?: boolean;
+    is_searchable?: boolean;
+    is_default?: boolean;
+}
+
 export async function GET(
     request: NextRequest,
     { params }: { params: { vector_store_id: string } }
@@ -180,7 +189,7 @@ export async function PATCH(
             }
 
             // Preparar dados para atualização
-            const updateData: any = {};
+            const updateData: VectorStoreUpdateData = {};
 
             // Adicionar campos a serem atualizados se presentes na requisição
             if (requestData.name !== undefined) updateData.name = requestData.name;

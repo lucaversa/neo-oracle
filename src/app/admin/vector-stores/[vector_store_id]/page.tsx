@@ -3,8 +3,7 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { useAuth } from '@/context/AuthContext';
-import { useAdmin, withAdminAccess } from '@/context/AdminContext';
+import { withAdminAccess } from '@/context/AdminContext';
 import { VectorStore } from '@/types/admin';
 import { getVectorStore } from '@/services/vectorStoreService';
 import FileList from '@/components/admin/FileList';
@@ -21,8 +20,6 @@ function VectorStoreDetailPage() {
     const [loading, setLoading] = useState<boolean>(true);
     const [error, setError] = useState<string | null>(null);
     const [refreshTrigger, setRefreshTrigger] = useState<number>(0);
-    const { user } = useAuth();
-    const { isAdmin } = useAdmin();
     const router = useRouter();
 
     useEffect(() => {

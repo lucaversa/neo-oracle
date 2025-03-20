@@ -38,7 +38,7 @@ export interface OpenAIVectorStoreResponse {
     expires_after: string | null;
     expires_at: string | null;
     last_active_at: number;
-    metadata: Record<string, any>;
+    metadata: Record<string, unknown>;
 }
 
 export interface OpenAIVectorStoreListResponse {

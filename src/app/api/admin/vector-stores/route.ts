@@ -1,9 +1,8 @@
 // src/app/api/admin/vector-stores/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
 
 // API proxy simples para a API da OpenAI
-export async function GET(request: NextRequest) {
+export async function GET() {
     try {
         // Simplificando: removemos a verificação do Supabase
         const openaiKey = process.env.OPENAI_API_KEY;
@@ -98,7 +97,7 @@ export async function POST(request: NextRequest) {
         try {
             openaiData = JSON.parse(responseText);
             console.log('[DEBUG-CRITICAL] Vector store criada na OpenAI:', openaiData.id);
-        } catch (e) {
+        } catch {
             return NextResponse.json(
                 { error: 'Erro ao analisar resposta da API OpenAI', details: responseText },
                 { status: 500 }

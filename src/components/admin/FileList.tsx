@@ -1,7 +1,17 @@
 // src/components/admin/FileList.tsx
 import { useState, useEffect } from 'react';
 import { VectorStoreFile } from '@/types/admin';
-import { listVectorStoreFiles, deleteFileFromVectorStore, getFileDetails } from '@/services/vectorStoreService';
+import { deleteFileFromVectorStore, getFileDetails } from '@/services/vectorStoreService';
+
+// Interface para os detalhes do arquivo
+interface FileDetails {
+    filename?: string;
+    purpose?: string;
+    bytes?: number;
+    created_at?: number;
+    status?: string;
+    [key: string]: string | number | boolean | object | null | undefined;
+}
 
 interface FileListProps {
     vectorStoreId: string;
@@ -15,7 +25,7 @@ export default function FileList({ vectorStoreId, onRefresh }: FileListProps) {
     const [deletingFile, setDeletingFile] = useState<string | null>(null);
     const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
     const [selectedFile, setSelectedFile] = useState<VectorStoreFile | null>(null);
-    const [fileDetails, setFileDetails] = useState<any>(null);
+    const [fileDetails, setFileDetails] = useState<FileDetails | null>(null);
     const [showDetails, setShowDetails] = useState<boolean>(false);
     const [nextCursor, setNextCursor] = useState<string | null>(null);
 
@@ -74,7 +84,7 @@ export default function FileList({ vectorStoreId, onRefresh }: FileListProps) {
                 // Anexar novos arquivos sem duplicatas
                 setFiles(prevFiles => {
                     const combined = [...prevFiles];
-                    newFiles.forEach((file: any) => {
+                    newFiles.forEach((file: VectorStoreFile) => {
                         if (!combined.some(f => f.id === file.id)) {
                             combined.push(file);
                         }
@@ -86,7 +96,7 @@ export default function FileList({ vectorStoreId, onRefresh }: FileListProps) {
             setPage(pageNum);
 
             // Iniciar carregamento de detalhes para cada arquivo
-            newFiles.forEach((file: any) => {
+            newFiles.forEach((file: VectorStoreFile) => {
                 if (!fileNames[file.id]) {
                     loadFileDetails(file.id);
                 }
@@ -109,7 +119,8 @@ export default function FileList({ vectorStoreId, onRefresh }: FileListProps) {
             const details = await getFileDetails(fileId);
 
             if (details && details.filename) {
-                setFileNames(prev => ({ ...prev, [fileId]: details.filename }));
+                // Ensure filename is a string by providing a fallback
+                setFileNames(prev => ({ ...prev, [fileId]: details.filename || fileId }));
             }
         } catch (error) {
             console.error(`Erro ao carregar detalhes do arquivo ${fileId}:`, error);

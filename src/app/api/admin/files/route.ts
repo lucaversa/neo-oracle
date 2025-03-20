@@ -133,7 +133,7 @@ export async function POST(request: NextRequest) {
         let data;
         try {
             data = JSON.parse(responseText);
-        } catch (e) {
+        } catch {
             return NextResponse.json(
                 { error: 'Erro ao analisar resposta da API OpenAI', details: responseText },
                 { status: 500 }

@@ -1,9 +1,9 @@
 // src/app/api/admin/vector-stores-db/route.ts
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 
 // Buscar dados diretamente do banco, sem passar pela API da OpenAI
-export async function GET(request: NextRequest) {
+export async function GET() {
     try {
         console.log('[DEBUG] Buscando vector stores diretamente do banco');
 

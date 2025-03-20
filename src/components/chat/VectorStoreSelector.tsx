@@ -327,7 +327,7 @@ export default function VectorStoreSelector({
                         >
                             {searchTerm ? (
                                 <>
-                                    <p>Nenhuma base de conhecimento encontrada para "{searchTerm}"</p>
+                                    <p>Nenhuma base de conhecimento encontrada para &quot;{searchTerm}&quot;</p>
                                     <button
                                         onClick={() => setSearchTerm('')}
                                         style={{

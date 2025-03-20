@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/supabase';
@@ -20,18 +20,8 @@ export function AdminProvider({ children }: { children: ReactNode }) {
     const [error, setError] = useState<string | null>(null);
     const { user } = useAuth();
 
-    // Verificar status de admin quando o usuário é carregado
-    useEffect(() => {
-        if (user) {
-            checkAdminStatus();
-        } else {
-            setIsAdmin(false);
-            setLoading(false);
-        }
-    }, [user]);
-
     // Função para verificar se o usuário é admin
-    const checkAdminStatus = async (): Promise<boolean> => {
+    const checkAdminStatus = useCallback(async (): Promise<boolean> => {
         if (!user) {
             setIsAdmin(false);
             setLoading(false);
@@ -69,7 +59,17 @@ export function AdminProvider({ children }: { children: ReactNode }) {
         } finally {
             setLoading(false);
         }
-    };
+    }, [user]);
+
+    // Verificar status de admin quando o usuário é carregado
+    useEffect(() => {
+        if (user) {
+            checkAdminStatus();
+        } else {
+            setIsAdmin(false);
+            setLoading(false);
+        }
+    }, [user, checkAdminStatus]);
 
     return (
         <AdminContext.Provider value={{ isAdmin, loading, error, checkAdminStatus }}>
@@ -88,8 +88,10 @@ export function useAdmin() {
 }
 
 // Hook para verificar se um usuário tem acesso a rotas de admin
-export function withAdminAccess(Component: React.ComponentType<any>) {
-    return function WithAdminAccessWrapper(props: any) {
+export function withAdminAccess<P extends object>(
+    Component: React.ComponentType<P>
+) {
+    return function WithAdminAccessWrapper(props: P) {
         const { isAdmin, loading } = useAdmin();
         const router = useRouter();
         const [checked, setChecked] = useState(false);

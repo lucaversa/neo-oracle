@@ -1,6 +1,15 @@
 // src/app/api/admin/vector-stores/[vector_store_id]/files/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 
+// Interface para definir a estrutura do corpo da requisição
+interface VectorStoreFileRequest {
+    file_id: string;
+    chunking_strategy?: {
+        chunk_size?: number;
+        chunk_overlap?: number;
+    };
+}
+
 // GET endpoint para listar arquivos de uma vector store
 export async function GET(
     request: NextRequest,
@@ -114,7 +123,7 @@ export async function POST(
         });
 
         // Corpo da requisição com valores obrigatórios
-        const requestBody: any = {
+        const requestBody: VectorStoreFileRequest = {
             file_id
         };
 
@@ -154,7 +163,8 @@ export async function POST(
         let data;
         try {
             data = JSON.parse(responseText);
-        } catch (e) {
+        } catch {
+            // Omitindo o parâmetro de erro já que não o estamos utilizando
             return NextResponse.json(
                 { error: 'Erro ao analisar resposta da API OpenAI', details: responseText },
                 { status: 500 }

@@ -2,6 +2,49 @@
 
 import { CreateVectorStoreRequest, VectorStore, VectorStoreFile } from "@/types/admin";
 
+// Define interfaces for API responses to avoid using 'any'
+interface ApiVectorStoreItem {
+    id: string;
+    name: string;
+    created_at: number;
+    last_active_at: number;
+    status: string;
+    [key: string]: unknown;
+}
+
+interface DbVectorStoreItem {
+    vector_store_id: string;
+    description?: string;
+    is_active?: boolean;
+    is_searchable?: boolean;
+    is_default?: boolean;
+    created_by?: string | null;
+    [key: string]: unknown;
+}
+
+interface FileResponseItem {
+    id: string;
+    filename?: string;
+    name?: string;
+    status?: string;
+    bytes?: number;
+    size?: number;
+    created_at?: number;
+    purpose?: string;
+    object?: string;
+    [key: string]: unknown;
+}
+
+interface FileDetails {
+    id: string;
+    filename?: string;
+    purpose?: string;
+    bytes?: number;
+    created_at?: number;
+    status?: string;
+    [key: string]: string | number | boolean | null | undefined;
+}
+
 // Base URL para as requisições de API
 const API_BASE_URL = '/api/admin';
 
@@ -43,13 +86,13 @@ export async function listVectorStores(): Promise<VectorStore[]> {
                 // Criar um mapa de vector stores do banco pelo ID
                 const dbVectorStores = new Map();
                 if (dbData.data && Array.isArray(dbData.data)) {
-                    dbData.data.forEach((item: any) => {
+                    dbData.data.forEach((item: DbVectorStoreItem) => {
                         dbVectorStores.set(item.vector_store_id, item);
                     });
                 }
 
                 // Converter resposta da OpenAI para o formato da aplicação, mas usando dados do banco quando disponíveis
-                const vectorStores = data.data.map((item: any) => {
+                const vectorStores = data.data.map((item: ApiVectorStoreItem) => {
                     const dbItem = dbVectorStores.get(item.id);
 
                     return {
@@ -74,7 +117,7 @@ export async function listVectorStores(): Promise<VectorStore[]> {
         }
 
         // Fallback: Usar apenas os dados da OpenAI se não conseguir dados do banco
-        const vectorStores = data.data.map((item: any) => ({
+        const vectorStores = data.data.map((item: ApiVectorStoreItem) => ({
             vector_store_id: item.id,
             name: item.name,
             description: '',
@@ -276,7 +319,6 @@ export async function deleteVectorStore(id: string): Promise<void> {
 // Listar arquivos de uma vector store
 export const listVectorStoreFiles = async (
     vectorStoreId: string,
-    page: number = 1,
     limit: number = 10,
     cursor?: string
 ): Promise<VectorStoreFile[]> => {
@@ -304,7 +346,7 @@ export const listVectorStoreFiles = async (
         let files: VectorStoreFile[] = [];
 
         if (responseData && responseData.data && Array.isArray(responseData.data)) {
-            files = responseData.data.map((file: any) => {
+            files = responseData.data.map((file: FileResponseItem) => {
                 const fileData = file.object ? file : file;
 
                 return {
@@ -363,7 +405,7 @@ export const uploadFileToVectorStore = async (vectorStoreId: string, file: File)
                 const errorData = await uploadResponse.json();
                 console.error('Detalhes do erro:', errorData);
                 errorMessage = errorData.error || errorData.details || errorMessage;
-            } catch (parseError) {
+            } catch {
                 const errorText = await uploadResponse.text();
                 console.error('Resposta bruta de erro:', errorText);
                 errorMessage = `Erro não estruturado: ${errorText.substring(0, 200)}`;
@@ -401,7 +443,7 @@ export const uploadFileToVectorStore = async (vectorStoreId: string, file: File)
                 const errorData = await associateResponse.json();
                 console.error('Detalhes do erro de associação:', errorData);
                 errorMessage = errorData.error || errorData.details || errorMessage;
-            } catch (parseError) {
+            } catch {
                 const errorText = await associateResponse.text();
                 console.error('Resposta bruta de erro de associação:', errorText);
                 errorMessage = `Erro não estruturado: ${errorText.substring(0, 200)}`;
@@ -473,7 +515,7 @@ export async function deleteFile(fileId: string): Promise<boolean> {
     }
 }
 
-export const getFileDetails = async (fileId: string): Promise<any> => {
+export const getFileDetails = async (fileId: string): Promise<FileDetails> => {
     try {
         const response = await fetch(`/api/admin/files/${fileId}`);
 
@@ -490,13 +532,13 @@ export const getFileDetails = async (fileId: string): Promise<any> => {
 };
 
 // Cache local para evitar múltiplas requisições ao mesmo arquivo
-const fileCache = new Map<string, any>();
+const fileCache = new Map<string, FileDetails>();
 
 // Função para obter detalhes do arquivo de forma otimizada
-export const getFileInfoOptimized = async (fileId: string): Promise<any> => {
+export const getFileInfoOptimized = async (fileId: string): Promise<FileDetails> => {
     // Verificar cache primeiro
     if (fileCache.has(fileId)) {
-        return fileCache.get(fileId);
+        return fileCache.get(fileId)!;
     }
 
     try {
@@ -515,7 +557,7 @@ export const getFileInfoOptimized = async (fileId: string): Promise<any> => {
     } catch (error) {
         console.error(`Error getting file details for ${fileId}:`, error);
         // Retornar objeto vazio em caso de erro para não quebrar o processamento
-        return {};
+        return { id: fileId };
     }
 };
 
@@ -524,8 +566,8 @@ export const processFilesInBatches = async (
     fileIds: string[],
     batchSize: number = 5,
     delayMs: number = 1000
-): Promise<Record<string, any>> => {
-    const results: Record<string, any> = {};
+): Promise<Record<string, FileDetails>> => {
+    const results: Record<string, FileDetails> = {};
 
     // Processar apenas IDs que não estão em cache
     const uncachedIds = fileIds.filter(id => !fileCache.has(id));
@@ -553,7 +595,7 @@ export const processFilesInBatches = async (
     // Adicionar resultados do cache
     fileIds.forEach(id => {
         if (fileCache.has(id) && !results[id]) {
-            results[id] = fileCache.get(id);
+            results[id] = fileCache.get(id)!;
         }
     });
 

@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
-import { useAdmin, withAdminAccess } from '@/context/AdminContext';
+import { withAdminAccess } from '@/context/AdminContext';
 import { VectorStore, CreateVectorStoreRequest } from '@/types/admin';
 import {
     listVectorStores,
@@ -22,7 +22,6 @@ function VectorStoresPage() {
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
     const [deleteTarget, setDeleteTarget] = useState<VectorStore | null>(null);
     const { user } = useAuth();
-    const { isAdmin } = useAdmin();
     const router = useRouter();
 
     useEffect(() => {

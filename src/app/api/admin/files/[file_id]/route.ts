@@ -1,19 +1,15 @@
-// src/app/api/admin/files/[file_id]/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 
-// GET endpoint para obter detalhes do arquivo
-export async function GET(
-    request: NextRequest,
-    { params }: { params: { file_id: string } }
-) {
-    try {
-        const { file_id } = params;
+export async function GET(request: NextRequest, context: unknown) {
+    // Fazemos a asserção para garantir que context tem o formato esperado
+    const { params } = context as { params: { file_id: string } };
+    const { file_id } = params;
 
+    try {
         if (!file_id) {
             return NextResponse.json({ error: 'ID do arquivo é obrigatório' }, { status: 400 });
         }
 
-        // Obter chave da API da OpenAI
         const openaiKey = process.env.OPENAI_API_KEY;
         if (!openaiKey) {
             return NextResponse.json({ error: 'API key não configurada' }, { status: 500 });
@@ -21,7 +17,6 @@ export async function GET(
 
         console.log('Enviando requisição GET para obter detalhes do arquivo:', file_id);
 
-        // Chamar API da OpenAI para obter detalhes do arquivo
         const openaiResponse = await fetch(`https://api.openai.com/v1/files/${file_id}`, {
             method: 'GET',
             headers: {
@@ -56,19 +51,15 @@ export async function GET(
     }
 }
 
-// DELETE endpoint para excluir um arquivo
-export async function DELETE(
-    request: NextRequest,
-    { params }: { params: { file_id: string } }
-) {
-    try {
-        const { file_id } = params;
+export async function DELETE(request: NextRequest, context: unknown) {
+    const { params } = context as { params: { file_id: string } };
+    const { file_id } = params;
 
+    try {
         if (!file_id) {
             return NextResponse.json({ error: 'ID do arquivo é obrigatório' }, { status: 400 });
         }
 
-        // Obter chave da API da OpenAI
         const openaiKey = process.env.OPENAI_API_KEY;
         if (!openaiKey) {
             return NextResponse.json({ error: 'API key não configurada' }, { status: 500 });
@@ -76,7 +67,6 @@ export async function DELETE(
 
         console.log('Enviando requisição DELETE para excluir arquivo:', file_id);
 
-        // Chamar API da OpenAI para excluir arquivo
         const openaiResponse = await fetch(`https://api.openai.com/v1/files/${file_id}`, {
             method: 'DELETE',
             headers: {
@@ -86,7 +76,6 @@ export async function DELETE(
             }
         });
 
-        // Se o status for 404, consideramos como sucesso também (o recurso já não existe)
         if (!openaiResponse.ok && openaiResponse.status !== 404) {
             const errorText = await openaiResponse.text();
             console.error('Erro na resposta da API OpenAI:', {
@@ -101,7 +90,6 @@ export async function DELETE(
             );
         }
 
-        // Para 404, indicamos sucesso mas com uma mensagem específica
         if (openaiResponse.status === 404) {
             return NextResponse.json({
                 success: true,

@@ -3,11 +3,12 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export async function GET(
     request: NextRequest,
-    { params }: { params: { file_id: string } }
+    context: { params: { file_id: string } }
 ) {
     try {
-        const { file_id } = params;
+        const { file_id } = context.params;
 
+        // Rest of your function remains the same
         if (!file_id) {
             return NextResponse.json({ error: 'ID do arquivo é obrigatório' }, { status: 400 });
         }

@@ -1,14 +1,11 @@
-// src/app/api/admin/vector-stores/[vector_store_id]/files/[file_id]/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 
 // DELETE endpoint para remover um arquivo de uma vector store
-export async function DELETE(
-    request: NextRequest,
-    { params }: { params: { vector_store_id: string; file_id: string } }
-) {
-    try {
-        const { vector_store_id, file_id } = params;
+export async function DELETE(request: NextRequest, context: unknown) {
+    const { params } = context as { params: { vector_store_id: string; file_id: string } };
+    const { vector_store_id, file_id } = params;
 
+    try {
         if (!vector_store_id || !file_id) {
             return NextResponse.json({
                 error: 'IDs da vector store e do arquivo são obrigatórios'
@@ -59,7 +56,7 @@ export async function DELETE(
             });
         }
 
-        // Obter o corpo da resposta como texto para logging
+        // Tentar obter o corpo da resposta para logging
         let responseData;
         try {
             const responseText = await openaiResponse.text();
@@ -75,7 +72,7 @@ export async function DELETE(
             message: 'Arquivo removido da vector store com sucesso',
             ...responseData,
             id: file_id,
-            vector_store_id: vector_store_id
+            vector_store_id
         });
     } catch (error) {
         console.error('Erro ao remover arquivo da vector store:', error);
@@ -87,13 +84,11 @@ export async function DELETE(
 }
 
 // GET endpoint para obter detalhes da associação arquivo-vector store
-export async function GET(
-    request: NextRequest,
-    { params }: { params: { vector_store_id: string; file_id: string } }
-) {
-    try {
-        const { vector_store_id, file_id } = params;
+export async function GET(request: NextRequest, context: unknown) {
+    const { params } = context as { params: { vector_store_id: string; file_id: string } };
+    const { vector_store_id, file_id } = params;
 
+    try {
         if (!vector_store_id || !file_id) {
             return NextResponse.json({
                 error: 'IDs da vector store e do arquivo são obrigatórios'

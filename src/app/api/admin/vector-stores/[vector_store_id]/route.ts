@@ -1,7 +1,8 @@
+// src/app/api/admin/vector-stores/[vector_store_id]/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 
-// Interface for vector store update data
+// Interface para os dados de atualização de vector store
 interface VectorStoreUpdateData {
     name?: string;
     description?: string | null;
@@ -12,16 +13,16 @@ interface VectorStoreUpdateData {
 
 export async function GET(
     request: NextRequest,
-    context: { params: Record<string, string> }
+    { params }: { params: { vector_store_id: string } }
 ) {
     try {
-        const { vector_store_id } = context.params;
+        const { vector_store_id } = params;
 
         if (!vector_store_id) {
             return NextResponse.json({ error: 'ID do vector_store é obrigatório' }, { status: 400 });
         }
 
-        // Make request to OpenAI API
+        // Fazer requisição para a API da OpenAI
         const openaiKey = process.env.OPENAI_API_KEY;
         if (!openaiKey) {
             return NextResponse.json({ error: 'API key não configurada' }, { status: 500 });
@@ -53,22 +54,22 @@ export async function GET(
             );
         }
 
-        // Merge OpenAI data with Supabase data
+        // Mesclar os dados da OpenAI com os dados do Supabase
         const openaiData = await openaiResponse.json();
 
         try {
-            // Attempt to fetch complementary data from Supabase
+            // Tentar buscar os dados complementares do Supabase
             const { data: supabaseData, error: fetchError } = await supabase
                 .from('vector_stores')
                 .select('*')
                 .eq('vector_store_id', vector_store_id)
                 .single();
 
-            if (fetchError && fetchError.code !== 'PGRST116') { // Ignore "not found" error
+            if (fetchError && fetchError.code !== 'PGRST116') { // Ignorar erro de "não encontrado"
                 console.warn('Erro ao buscar dados complementares do Supabase:', fetchError);
             }
 
-            // If Supabase data exists, merge with OpenAI data
+            // Se encontrou dados no Supabase, mesclar com os dados da OpenAI
             if (supabaseData) {
                 return NextResponse.json({
                     ...openaiData,
@@ -80,7 +81,7 @@ export async function GET(
             }
         } catch (dbError) {
             console.warn('Erro ao interagir com o banco de dados:', dbError);
-            // Continue and return only OpenAI data
+            // Continuar e retornar apenas os dados da OpenAI
         }
 
         return NextResponse.json(openaiData);
@@ -93,24 +94,25 @@ export async function GET(
     }
 }
 
+// Modified PATCH function in src/app/api/admin/vector-stores/[vector_store_id]/route.ts
 export async function PATCH(
     request: NextRequest,
-    context: { params: Record<string, string> }
+    { params }: { params: { vector_store_id: string } }
 ) {
     try {
-        const { vector_store_id } = context.params;
+        const { vector_store_id } = params;
 
         if (!vector_store_id) {
             return NextResponse.json({ error: 'ID do vector_store é obrigatório' }, { status: 400 });
         }
 
-        // Get request data
+        // Obter dados da requisição
         const requestData = await request.json();
         console.log('[DEBUG] PATCH - Atualizando vector store:', vector_store_id, 'com dados:', requestData);
 
-        // Update directly in Supabase - OpenAI doesn't have an endpoint for updating settings
+        // Atualizar diretamente no Supabase - A OpenAI não tem endpoint para atualizar configurações
         try {
-            // Check if the record exists
+            // Verificar se o registro existe
             const { data: existingData, error: fetchError } = await supabase
                 .from('vector_stores')
                 .select('*')
@@ -120,11 +122,11 @@ export async function PATCH(
             if (fetchError) {
                 console.error('[DEBUG] Erro ao verificar se existe no Supabase:', fetchError);
 
-                // If it doesn't exist, create a new record
-                if (fetchError.code === 'PGRST116') { // Code for "not found"
+                // Se não existe, criar um novo registro
+                if (fetchError.code === 'PGRST116') { // Código para "não encontrado"
                     console.log('[DEBUG] Vector store não encontrada. Criando novo registro.');
 
-                    // Minimum data required to create
+                    // Dados mínimos necessários para criar
                     const insertData = {
                         vector_store_id,
                         name: requestData.name || `Vector Store ${vector_store_id.substring(0, 8)}`,
@@ -186,10 +188,10 @@ export async function PATCH(
                 }
             }
 
-            // Prepare update data
+            // Preparar dados para atualização
             const updateData: VectorStoreUpdateData = {};
 
-            // Add fields to update if present in the request
+            // Adicionar campos a serem atualizados se presentes na requisição
             if (requestData.name !== undefined) updateData.name = requestData.name;
             if (requestData.description !== undefined) updateData.description = requestData.description;
             if (requestData.is_active !== undefined) updateData.is_active = requestData.is_active;
@@ -198,13 +200,13 @@ export async function PATCH(
 
             console.log('[DEBUG] Dados para atualização:', updateData);
 
-            // If there's nothing to update, return existing data
+            // Se não houver nada para atualizar, retornar os dados existentes
             if (Object.keys(updateData).length === 0) {
                 console.log('[DEBUG] Nenhum dado para atualizar. Retornando registro existente.');
                 return NextResponse.json(existingData);
             }
 
-            // Update in Supabase
+            // Atualizar no Supabase
             const { data: updatedData, error: updateError } = await supabase
                 .from('vector_stores')
                 .update(updateData)
@@ -244,16 +246,17 @@ export async function PATCH(
 
 export async function DELETE(
     request: NextRequest,
-    context: { params: Record<string, string> }
+    { params }: { params: { vector_store_id: string } }
 ) {
     try {
-        const { vector_store_id } = context.params;
+        const { vector_store_id } = params;
 
         if (!vector_store_id) {
             return NextResponse.json({ error: 'ID do vector_store é obrigatório' }, { status: 400 });
         }
 
-        // 1. Delete from Supabase first to ensure removal even if OpenAI deletion fails
+        // 1. Primeiro excluir do Supabase para garantir que mesmo se a exclusão na OpenAI falhar,
+        // o registro tenha sido removido do banco
         let supabaseDeleteSuccess = false;
         try {
             const { error: deleteError } = await supabase
@@ -263,17 +266,17 @@ export async function DELETE(
 
             if (deleteError) {
                 console.error('[DEBUG] Erro ao excluir vector store do Supabase:', deleteError);
-                // Continue even with Supabase error
+                // Continuamos mesmo com erro no Supabase
             } else {
                 supabaseDeleteSuccess = true;
                 console.log('[DEBUG] Vector store excluída com sucesso do Supabase');
             }
         } catch (dbError) {
             console.error('[DEBUG] Exceção ao excluir do Supabase:', dbError);
-            // Continue even with database error
+            // Continuamos mesmo com erro no banco
         }
 
-        // 2. Delete from OpenAI
+        // 2. Agora excluir da OpenAI
         const openaiKey = process.env.OPENAI_API_KEY;
         if (!openaiKey) {
             return NextResponse.json({
@@ -293,7 +296,7 @@ export async function DELETE(
             }
         });
 
-        // If status is 404, treat it as success (resource already doesn't exist)
+        // Se o status for 404, consideramos como sucesso também (o recurso já não existe)
         if (!openaiResponse.ok && openaiResponse.status !== 404) {
             const errorText = await openaiResponse.text();
             console.error('[DEBUG] Erro na resposta da API OpenAI:', {
@@ -312,7 +315,7 @@ export async function DELETE(
             );
         }
 
-        // For 404, indicate success with a specific message
+        // Para 404, indicamos sucesso mas com uma mensagem específica
         if (openaiResponse.status === 404) {
             console.log('[DEBUG] Vector store não encontrada na OpenAI (404), considerada como excluída');
             return NextResponse.json({

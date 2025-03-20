@@ -5,10 +5,9 @@ export async function GET(
     request: NextRequest,
     context: { params: { file_id: string } }
 ) {
+    const { file_id } = context.params;
     try {
-        const { file_id } = context.params;
 
-        // Rest of your function remains the same
         if (!file_id) {
             return NextResponse.json({ error: 'ID do arquivo é obrigatório' }, { status: 400 });
         }

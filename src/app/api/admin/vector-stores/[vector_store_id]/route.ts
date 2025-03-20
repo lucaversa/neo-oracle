@@ -11,12 +11,18 @@ interface VectorStoreUpdateData {
     is_default?: boolean;
 }
 
+type RouteContext = {
+    params: {
+        vector_store_id: string
+    }
+}
+
 export async function GET(
-    request: NextRequest,
-    { params }: { params: { vector_store_id: string } }
+    request: Request,
+    context: RouteContext
 ) {
     try {
-        const { vector_store_id } = params;
+        const { vector_store_id } = context.params;
 
         if (!vector_store_id) {
             return NextResponse.json({ error: 'ID do vector_store é obrigatório' }, { status: 400 });
@@ -94,13 +100,13 @@ export async function GET(
     }
 }
 
-// Modified PATCH function in src/app/api/admin/vector-stores/[vector_store_id]/route.ts
+// Modified PATCH function
 export async function PATCH(
-    request: NextRequest,
-    { params }: { params: { vector_store_id: string } }
+    request: Request,
+    context: RouteContext
 ) {
     try {
-        const { vector_store_id } = params;
+        const { vector_store_id } = context.params;
 
         if (!vector_store_id) {
             return NextResponse.json({ error: 'ID do vector_store é obrigatório' }, { status: 400 });
@@ -245,11 +251,11 @@ export async function PATCH(
 }
 
 export async function DELETE(
-    request: NextRequest,
-    { params }: { params: { vector_store_id: string } }
+    request: Request,
+    context: RouteContext
 ) {
     try {
-        const { vector_store_id } = params;
+        const { vector_store_id } = context.params;
 
         if (!vector_store_id) {
             return NextResponse.json({ error: 'ID do vector_store é obrigatório' }, { status: 400 });

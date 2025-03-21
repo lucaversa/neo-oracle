@@ -21,6 +21,8 @@ export default function ChatBubble({
     const [copied, setCopied] = useState(false);
     // Estado adicional para controlar quando a bolha está visível
     const [isVisible, setIsVisible] = useState(true);
+    // Estado para controlar hover no botão de copiar
+    const [isHovering, setIsHovering] = useState(false);
 
     // Garantir que a bolha permanece visível durante o streaming
     useEffect(() => {
@@ -46,6 +48,27 @@ export default function ChatBubble({
 
     // Se o componente não estiver visível, não renderizar nada
     if (!isVisible) return null;
+
+    // Definir estilo do botão de copiar
+    const copyButtonStyle = {
+        display: 'flex',
+        alignItems: 'center',
+        gap: '6px',
+        marginTop: '6px',
+        padding: '6px 12px',
+        background: 'transparent',
+        border: '1px solid var(--border-color)',
+        borderRadius: '6px',
+        fontSize: '13px',
+        color: isUser ? 'var(--primary-color)' : 'var(--text-secondary)',
+        cursor: 'pointer',
+        alignSelf: 'flex-start',
+        transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+        boxShadow: isHovering ? 'var(--shadow-md)' : 'var(--shadow-sm)',
+        backgroundColor: isDarkMode ? 'var(--background-elevated)' : 'var(--background-main)',
+        transform: isHovering ? 'translateY(-2px)' : 'translateY(0)',
+        opacity: isHovering ? 1 : 0.85,
+    };
 
     return (
         <div style={{
@@ -120,43 +143,39 @@ export default function ChatBubble({
                     </div>
                 </div>
 
-                {/* Botão de copiar - apenas para mensagens do AI e quando houver conteúdo */}
-                {!isUser && displayContent && (
+                {/* Botão de copiar - para ambos os tipos de mensagens quando houver conteúdo */}
+                {displayContent && (
                     <button
                         onClick={copyToClipboard}
-                        style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '6px',
-                            marginTop: '6px',
-                            padding: '6px 12px',
-                            background: 'transparent',
-                            border: '1px solid var(--border-color)',
-                            borderRadius: '6px',
-                            fontSize: '13px',
-                            color: 'var(--text-secondary)',
-                            cursor: 'pointer',
-                            alignSelf: 'flex-start',
-                            transition: 'all 0.2s ease',
-                            boxShadow: 'var(--shadow-sm)',
-                            backgroundColor: isDarkMode ? 'var(--background-elevated)' : 'var(--background-main)',
-                        }}
+                        onMouseEnter={() => setIsHovering(true)}
+                        onMouseLeave={() => setIsHovering(false)}
+                        style={copyButtonStyle}
+                        className="copy-button"
                     >
                         {copied ? (
-                            <>
+                            <div style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                animation: 'fadeIn 0.3s ease-out'
+                            }}>
                                 <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                     <polyline points="20 6 9 17 4 12"></polyline>
                                 </svg>
                                 Copiado!
-                            </>
+                            </div>
                         ) : (
-                            <>
+                            <div style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                            }}>
                                 <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                     <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
                                     <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
                                 </svg>
                                 Copiar
-                            </>
+                            </div>
                         )}
                     </button>
                 )}

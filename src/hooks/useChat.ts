@@ -81,15 +81,16 @@ export function useChat(userId?: string): UseChatReturn {
     }, [sessionId, defaultVectorStoreId]);
 
     const getVectorStoreForQuery = useCallback(async (query: string): Promise<string[]> => {
-        // Se não for automático, retornar a selecionada
+        // If not automatic, return the selected one
         if (vectorStoreId !== 'automatic') {
+            console.log('Using manually selected vector store:', vectorStoreId);
             return vectorStoreId ? [vectorStoreId] : searchableVectorStores;
         }
 
         try {
-            console.log('Selecionando vector store automaticamente para a consulta:', query.substring(0, 50) + '...');
+            console.log('Auto-selection mode active. Query:', query.substring(0, 50) + '...');
 
-            // Chamar a API para selecionar automaticamente
+            // Call API to automatically select
             const response = await fetch('/api/openai/auto-select', {
                 method: 'POST',
                 headers: {
@@ -99,22 +100,35 @@ export function useChat(userId?: string): UseChatReturn {
             });
 
             if (!response.ok) {
-                console.error('Falha ao selecionar vector store automaticamente:', response.statusText);
-                // Em caso de erro, retornar todas as vector stores pesquisáveis
+                console.error('Failed to auto-select vector store:', response.statusText);
+                console.log('Falling back to all searchable vector stores');
                 return searchableVectorStores;
             }
 
             const data = await response.json();
+
+            // Log the complete response for debugging
+            console.log('Auto-select API response:', JSON.stringify(data));
+
             if (data && data.vector_store_id) {
-                console.log('Vector store selecionada automaticamente:', data.vector_store_id);
+                console.log('Vector store auto-selected:', data.vector_store_id);
+
+                if (data.fallback) {
+                    console.log('Note: This was a fallback selection');
+                }
+
+                if (data.matched) {
+                    console.log('Match type:', data.matched);
+                }
+
                 return [data.vector_store_id];
             }
 
-            console.log('Nenhuma vector store retornada, usando todas as pesquisáveis');
+            console.log('No vector store returned, using all searchable stores');
             return searchableVectorStores;
         } catch (error) {
-            console.error('Erro ao selecionar vector store automaticamente:', error);
-            // Em caso de erro, retornar todas as vector stores pesquisáveis
+            console.error('Error auto-selecting vector store:', error);
+            console.log('Error occurred, using all searchable vector stores');
             return searchableVectorStores;
         }
     }, [vectorStoreId, searchableVectorStores]);
@@ -856,6 +870,16 @@ export function useChat(userId?: string): UseChatReturn {
                 // Determinar quais vector stores usar (automático ou específico)
                 const vectorStoresForSearch = await getVectorStoreForQuery(content.trim());
                 console.log('Vector stores para pesquisa:', vectorStoresForSearch);
+
+                if (vectorStoreId === 'automatic') {
+                    console.log('Auto-selection mode active:', {
+                        query: content.trim().substring(0, 50) + '...',
+                        selectedStoreId: vectorStoresForSearch[0] || 'none',
+                        availableStores: searchableVectorStores
+                    });
+                } else {
+                    console.log('Manual vector store selection:', vectorStoreId);
+                }
 
                 // Iniciar uma solicitação fetch para obter o stream
                 const response = await fetch('/api/openai', {

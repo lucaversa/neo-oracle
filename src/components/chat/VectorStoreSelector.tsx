@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { VectorStore } from '@/types/admin';
 import { getSearchableVectorStores } from '@/services/vectorStoreService';
@@ -26,7 +26,6 @@ export default function VectorStoreSelector({
     const [selectedStore, setSelectedStore] = useState<VectorStore | null>(null);
     const [isBrowser, setIsBrowser] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
-    const [defaultStoreId, setDefaultStoreId] = useState<string | null>(null);
     const [showAutomaticOption, setShowAutomaticOption] = useState(false);
 
     // Necessário para o Portal funcionar corretamente no SSR
@@ -64,43 +63,31 @@ export default function VectorStoreSelector({
 
             // Identificar o default store
             const defaultStore = stores.find(store => store.is_default);
-            if (defaultStore) {
-                setDefaultStoreId(defaultStore.vector_store_id);
-            } else if (stores.length > 0) {
-                // Se não há default, usar a primeira
-                setDefaultStoreId(stores[0].vector_store_id);
-            }
 
             // Se não temos um ID selecionado, verificamos o cache
             if (!selectedId) {
                 const cachedId = localStorage.getItem(CACHE_KEY);
 
-                // Se há um ID no cache e é válido (ou é 'automatic' e temos mais de uma store)
                 if (cachedId) {
                     if (cachedId === 'automatic' && stores.length > 1) {
                         onSelect('automatic');
                     } else {
-                        // Verificar se o ID do cache existe nas stores
                         const validStore = stores.find(store => store.vector_store_id === cachedId);
                         if (validStore) {
                             setSelectedStore(validStore);
                             onSelect(cachedId);
                         } else if (defaultStore) {
-                            // Se o ID do cache não é válido, usar o default
                             setSelectedStore(defaultStore);
                             onSelect(defaultStore.vector_store_id);
                         } else if (stores.length > 0) {
-                            // Se não há default, usar a primeira
                             setSelectedStore(stores[0]);
                             onSelect(stores[0].vector_store_id);
                         }
                     }
                 } else if (defaultStore) {
-                    // Se não há cache, usar o default
                     setSelectedStore(defaultStore);
                     onSelect(defaultStore.vector_store_id);
                 } else if (stores.length > 0) {
-                    // Se não há default, usar a primeira
                     setSelectedStore(stores[0]);
                     onSelect(stores[0].vector_store_id);
                 }

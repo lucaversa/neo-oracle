@@ -30,6 +30,11 @@ export default function CreateVectorStoreModal({
             return;
         }
 
+        if (!description.trim()) {
+            setError('A descrição é obrigatória. Por favor, detalhe o conteúdo da Vector Store');
+            return;
+        }
+
         try {
             setIsSubmitting(true);
             setError(null);
@@ -172,14 +177,14 @@ export default function CreateVectorStoreModal({
                                 color: 'var(--text-primary)',
                             }}
                         >
-                            Descrição
+                            Descrição <span style={{ color: 'var(--error-color)' }}>*</span>
                         </label>
                         <textarea
                             id="description"
                             value={description}
                             onChange={(e) => setDescription(e.target.value)}
                             disabled={isSubmitting}
-                            placeholder="Descreva esta Vector Store (opcional)"
+                            placeholder="Descreva detalhadamente o conteúdo desta Vector Store (tipos de arquivos, assuntos, finalidade)"
                             style={{
                                 width: '100%',
                                 padding: '12px 16px',
@@ -192,7 +197,16 @@ export default function CreateVectorStoreModal({
                                 minHeight: '100px',
                                 resize: 'vertical'
                             }}
+                            required
                         />
+                        <p style={{
+                            marginTop: '8px',
+                            fontSize: '12px',
+                            color: 'var(--text-tertiary)',
+                        }}>
+                            Importante: Forneça detalhes específicos sobre o conteúdo desta Vector Store, incluindo tipos de arquivos,
+                            assuntos abordados e como ela será utilizada para melhorar a precisão das consultas.
+                        </p>
                     </div>
 
                     <div style={{ marginBottom: '24px' }}>

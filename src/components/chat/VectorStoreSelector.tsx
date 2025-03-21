@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { VectorStore } from '@/types/admin';
 import { getSearchableVectorStores } from '@/services/vectorStoreService';
@@ -10,6 +10,9 @@ interface VectorStoreSelectorProps {
     onSelect: (vectorStoreId: string) => void;
     disabled?: boolean;
 }
+
+// Chave para armazenar a escolha no localStorage
+const CACHE_KEY = 'oracle_selected_vector_store';
 
 export default function VectorStoreSelector({
     selectedId,
@@ -23,6 +26,8 @@ export default function VectorStoreSelector({
     const [selectedStore, setSelectedStore] = useState<VectorStore | null>(null);
     const [isBrowser, setIsBrowser] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
+    const [defaultStoreId, setDefaultStoreId] = useState<string | null>(null);
+    const [showAutomaticOption, setShowAutomaticOption] = useState(false);
 
     // Necessário para o Portal funcionar corretamente no SSR
     useEffect(() => {
@@ -31,11 +36,14 @@ export default function VectorStoreSelector({
 
     useEffect(() => {
         // Find the selected vector store when selectedId changes
-        if (selectedId) {
+        if (selectedId && selectedId !== 'automatic') {
             const store = vectorStores.find(vs => vs.vector_store_id === selectedId);
             if (store) {
                 setSelectedStore(store);
             }
+        } else if (selectedId === 'automatic') {
+            // Caso a opção automática esteja selecionada
+            setSelectedStore(null);
         }
     }, [selectedId, vectorStores]);
 
@@ -45,23 +53,57 @@ export default function VectorStoreSelector({
         try {
             setLoading(true);
             setError(null);
+
             const stores = await getSearchableVectorStores();
+
+            // Verificar se podemos mostrar a opção Automático (mais de uma vector store)
+            setShowAutomaticOption(stores.length > 1);
+
+            // Guardar a lista original de vector stores
             setVectorStores(stores);
 
-            // If there's a selected ID, find it in the fetched stores
-            if (selectedId) {
-                const selected = stores.find(store => store.vector_store_id === selectedId);
-                if (selected) {
-                    setSelectedStore(selected);
+            // Identificar o default store
+            const defaultStore = stores.find(store => store.is_default);
+            if (defaultStore) {
+                setDefaultStoreId(defaultStore.vector_store_id);
+            } else if (stores.length > 0) {
+                // Se não há default, usar a primeira
+                setDefaultStoreId(stores[0].vector_store_id);
+            }
+
+            // Se não temos um ID selecionado, verificamos o cache
+            if (!selectedId) {
+                const cachedId = localStorage.getItem(CACHE_KEY);
+
+                // Se há um ID no cache e é válido (ou é 'automatic' e temos mais de uma store)
+                if (cachedId) {
+                    if (cachedId === 'automatic' && stores.length > 1) {
+                        onSelect('automatic');
+                    } else {
+                        // Verificar se o ID do cache existe nas stores
+                        const validStore = stores.find(store => store.vector_store_id === cachedId);
+                        if (validStore) {
+                            setSelectedStore(validStore);
+                            onSelect(cachedId);
+                        } else if (defaultStore) {
+                            // Se o ID do cache não é válido, usar o default
+                            setSelectedStore(defaultStore);
+                            onSelect(defaultStore.vector_store_id);
+                        } else if (stores.length > 0) {
+                            // Se não há default, usar a primeira
+                            setSelectedStore(stores[0]);
+                            onSelect(stores[0].vector_store_id);
+                        }
+                    }
+                } else if (defaultStore) {
+                    // Se não há cache, usar o default
+                    setSelectedStore(defaultStore);
+                    onSelect(defaultStore.vector_store_id);
                 } else if (stores.length > 0) {
-                    // If selected ID not found, use the first store (which should be the default)
+                    // Se não há default, usar a primeira
                     setSelectedStore(stores[0]);
                     onSelect(stores[0].vector_store_id);
                 }
-            } else if (stores.length > 0) {
-                // If no selectedId, use the first store (which should be the default)
-                setSelectedStore(stores[0]);
-                onSelect(stores[0].vector_store_id);
             }
         } catch (err) {
             console.error('Error loading vector stores:', err);
@@ -97,9 +139,26 @@ export default function VectorStoreSelector({
         }
     };
 
-    const handleSelect = (store: VectorStore) => {
-        setSelectedStore(store);
-        onSelect(store.vector_store_id);
+    const handleSelect = (vectorStoreId: string) => {
+        if (vectorStoreId === 'automatic') {
+            // Caso selecione a opção automática
+            setSelectedStore(null);
+            onSelect('automatic');
+
+            // Salvar no cache
+            localStorage.setItem(CACHE_KEY, 'automatic');
+        } else {
+            // Caso selecione uma vector store específica
+            const store = vectorStores.find(vs => vs.vector_store_id === vectorStoreId);
+            if (store) {
+                setSelectedStore(store);
+                onSelect(vectorStoreId);
+
+                // Salvar no cache
+                localStorage.setItem(CACHE_KEY, vectorStoreId);
+            }
+        }
+
         handleClose();
     };
 
@@ -317,37 +376,6 @@ export default function VectorStoreSelector({
                                 }}
                             ></div>
                         </div>
-                    ) : filteredVectorStores.length === 0 ? (
-                        <div
-                            style={{
-                                padding: '20px',
-                                textAlign: 'center',
-                                color: 'var(--text-secondary)'
-                            }}
-                        >
-                            {searchTerm ? (
-                                <>
-                                    <p>Nenhuma base de conhecimento encontrada para &quot;{searchTerm}&quot;</p>
-                                    <button
-                                        onClick={() => setSearchTerm('')}
-                                        style={{
-                                            marginTop: '8px',
-                                            padding: '6px 12px',
-                                            backgroundColor: 'var(--background-subtle)',
-                                            border: '1px solid var(--border-color)',
-                                            borderRadius: '6px',
-                                            color: 'var(--text-secondary)',
-                                            fontSize: '13px',
-                                            cursor: 'pointer',
-                                        }}
-                                    >
-                                        Limpar pesquisa
-                                    </button>
-                                </>
-                            ) : (
-                                <p>Nenhuma base de conhecimento disponível</p>
-                            )}
-                        </div>
                     ) : (
                         <ul
                             style={{
@@ -358,19 +386,20 @@ export default function VectorStoreSelector({
                                 overflowY: 'auto'
                             }}
                         >
-                            {filteredVectorStores.map((store) => (
-                                <li key={store.vector_store_id}>
+                            {/* Opção Automático - exibida apenas se houver mais de uma vector store */}
+                            {showAutomaticOption && searchTerm === '' && (
+                                <li>
                                     <button
-                                        onClick={() => handleSelect(store)}
+                                        onClick={() => handleSelect('automatic')}
                                         style={{
                                             display: 'flex',
                                             alignItems: 'center',
                                             width: '100%',
                                             padding: '16px',
-                                            backgroundColor: selectedStore?.vector_store_id === store.vector_store_id
+                                            backgroundColor: selectedId === 'automatic'
                                                 ? 'var(--background-subtle)'
                                                 : 'transparent',
-                                            border: 'none',
+                                            border: '1px solid var(--border-subtle)',
                                             borderRadius: '8px',
                                             textAlign: 'left',
                                             cursor: 'pointer',
@@ -381,7 +410,7 @@ export default function VectorStoreSelector({
                                             e.currentTarget.style.backgroundColor = 'var(--background-subtle)';
                                         }}
                                         onMouseOut={(e) => {
-                                            if (selectedStore?.vector_store_id !== store.vector_store_id) {
+                                            if (selectedId !== 'automatic') {
                                                 e.currentTarget.style.backgroundColor = 'transparent';
                                             }
                                         }}
@@ -393,16 +422,26 @@ export default function VectorStoreSelector({
                                                 justifyContent: 'center',
                                                 width: '48px',
                                                 height: '48px',
-                                                backgroundColor: 'var(--primary-color)',
+                                                backgroundColor: 'rgba(8, 145, 178, 0.15)',
                                                 borderRadius: '50%',
-                                                color: 'white',
+                                                color: 'var(--primary-color)',
                                                 marginRight: '16px',
                                                 flexShrink: 0
                                             }}
                                         >
-                                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                                <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"></path>
-                                                <polyline points="14 2 14 8 20 8"></polyline>
+                                            {/* Ícone de varinha mágica */}
+                                            <svg
+                                                xmlns="http://www.w3.org/2000/svg"
+                                                width="24"
+                                                height="24"
+                                                viewBox="0 0 24 24"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                strokeWidth="2"
+                                                strokeLinecap="round"
+                                                strokeLinejoin="round"
+                                            >
+                                                <path d="M17.2 14.9l-.6 1c-1 1.5-2.7 1.9-4.2 1.1-.8-.5-1.4-1.1-1.9-1.9-.5-1-1.1-2-1.7-3M14 14l-6-6M6.8 9.1l.6-1c1-1.5 2.7-1.9 4.2-1.1.8.5 1.4 1.1 1.9 1.9.5 1 1.1 2 1.7 3" />
                                             </svg>
                                         </div>
                                         <div>
@@ -410,49 +449,205 @@ export default function VectorStoreSelector({
                                                 style={{
                                                     fontSize: '16px',
                                                     fontWeight: '500',
-                                                    color: 'var(--text-primary)',
+                                                    color: 'var(--primary-color)',
                                                     marginBottom: '4px'
                                                 }}
                                             >
-                                                {store.name}
-                                                {store.is_default && (
-                                                    <span
-                                                        style={{
-                                                            marginLeft: '8px',
-                                                            padding: '2px 8px',
-                                                            backgroundColor: 'rgba(16, 185, 129, 0.1)',
-                                                            color: 'var(--success-color)',
-                                                            borderRadius: '999px',
-                                                            fontSize: '11px',
-                                                            fontWeight: '600'
-                                                        }}
-                                                    >
-                                                        Padrão
-                                                    </span>
-                                                )}
+                                                Automático
                                             </div>
-                                            {store.description && (
-                                                <div
-                                                    style={{
-                                                        fontSize: '13px',
-                                                        color: 'var(--text-secondary)',
-                                                        display: '-webkit-box',
-                                                        WebkitLineClamp: 2,
-                                                        WebkitBoxOrient: 'vertical',
-                                                        overflow: 'hidden'
-                                                    }}
-                                                >
-                                                    {store.description}
-                                                </div>
-                                            )}
+                                            <div
+                                                style={{
+                                                    fontSize: '13px',
+                                                    color: 'var(--text-secondary)',
+                                                    display: '-webkit-box',
+                                                    WebkitLineClamp: 2,
+                                                    WebkitBoxOrient: 'vertical',
+                                                    overflow: 'hidden'
+                                                }}
+                                            >
+                                                IA escolhe qual a melhor fonte para sua pergunta
+                                            </div>
                                         </div>
                                     </button>
                                 </li>
-                            ))}
+                            )}
+
+                            {/* Lista de Vector Stores filtradas */}
+                            {filteredVectorStores.length === 0 ? (
+                                <div
+                                    style={{
+                                        padding: '20px',
+                                        textAlign: 'center',
+                                        color: 'var(--text-secondary)'
+                                    }}
+                                >
+                                    {searchTerm ? (
+                                        <>
+                                            <p>Nenhuma base de conhecimento encontrada para &quot;{searchTerm}&quot;</p>
+                                            <button
+                                                onClick={() => setSearchTerm('')}
+                                                style={{
+                                                    marginTop: '8px',
+                                                    padding: '6px 12px',
+                                                    backgroundColor: 'var(--background-subtle)',
+                                                    border: '1px solid var(--border-color)',
+                                                    borderRadius: '6px',
+                                                    color: 'var(--text-secondary)',
+                                                    fontSize: '13px',
+                                                    cursor: 'pointer',
+                                                }}
+                                            >
+                                                Limpar pesquisa
+                                            </button>
+                                        </>
+                                    ) : (
+                                        <p>Nenhuma base de conhecimento disponível</p>
+                                    )}
+                                </div>
+                            ) : (
+                                filteredVectorStores.map((store) => (
+                                    <li key={store.vector_store_id}>
+                                        <button
+                                            onClick={() => handleSelect(store.vector_store_id)}
+                                            style={{
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                width: '100%',
+                                                padding: '16px',
+                                                backgroundColor: selectedStore?.vector_store_id === store.vector_store_id
+                                                    ? 'var(--background-subtle)'
+                                                    : 'transparent',
+                                                border: '1px solid var(--border-subtle)',
+                                                borderRadius: '8px',
+                                                textAlign: 'left',
+                                                cursor: 'pointer',
+                                                transition: 'background-color 0.2s',
+                                                marginBottom: '8px'
+                                            }}
+                                            onMouseOver={(e) => {
+                                                e.currentTarget.style.backgroundColor = 'var(--background-subtle)';
+                                            }}
+                                            onMouseOut={(e) => {
+                                                if (selectedStore?.vector_store_id !== store.vector_store_id) {
+                                                    e.currentTarget.style.backgroundColor = 'transparent';
+                                                }
+                                            }}
+                                        >
+                                            <div
+                                                style={{
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center',
+                                                    width: '48px',
+                                                    height: '48px',
+                                                    backgroundColor: 'var(--primary-color)',
+                                                    borderRadius: '50%',
+                                                    color: 'white',
+                                                    marginRight: '16px',
+                                                    flexShrink: 0
+                                                }}
+                                            >
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                    <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"></path>
+                                                    <polyline points="14 2 14 8 20 8"></polyline>
+                                                </svg>
+                                            </div>
+                                            <div>
+                                                <div
+                                                    style={{
+                                                        fontSize: '16px',
+                                                        fontWeight: '500',
+                                                        color: 'var(--text-primary)',
+                                                        marginBottom: '4px',
+                                                        display: 'flex',
+                                                        alignItems: 'center'
+                                                    }}
+                                                >
+                                                    {store.name}
+                                                    {store.is_default && (
+                                                        <span
+                                                            style={{
+                                                                marginLeft: '8px',
+                                                                padding: '2px 8px',
+                                                                backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                                                                color: 'var(--success-color)',
+                                                                borderRadius: '999px',
+                                                                fontSize: '11px',
+                                                                fontWeight: '600'
+                                                            }}
+                                                        >
+                                                            Padrão
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                {store.description && (
+                                                    <div
+                                                        style={{
+                                                            fontSize: '13px',
+                                                            color: 'var(--text-secondary)',
+                                                            display: '-webkit-box',
+                                                            WebkitLineClamp: 2,
+                                                            WebkitBoxOrient: 'vertical',
+                                                            overflow: 'hidden'
+                                                        }}
+                                                    >
+                                                        {store.description}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </button>
+                                    </li>
+                                ))
+                            )}
                         </ul>
                     )}
                 </div>
             </div>
+        );
+    };
+
+    // Obter o texto a ser exibido no botão seletor
+    const getSelectedText = () => {
+        if (selectedId === 'automatic') {
+            return 'Automático';
+        }
+
+        if (loading) {
+            return 'Carregando...';
+        }
+
+        if (selectedStore) {
+            return selectedStore.name;
+        }
+
+        return 'Base de conhecimento';
+    };
+
+    // Obter o ícone a ser exibido no botão seletor
+    const getSelectedIcon = () => {
+        if (selectedId === 'automatic') {
+            return (
+                <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="var(--primary-color)"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                >
+                    <path d="M17.2 14.9l-.6 1c-1 1.5-2.7 1.9-4.2 1.1-.8-.5-1.4-1.1-1.9-1.9-.5-1-1.1-2-1.7-3M14 14l-6-6M6.8 9.1l.6-1c1-1.5 2.7-1.9 4.2-1.1.8.5 1.4 1.1 1.9 1.9.5 1 1.1 2 1.7 3" />
+                </svg>
+            );
+        }
+
+        return (
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"></path>
+                <polyline points="14 2 14 8 20 8"></polyline>
+            </svg>
         );
     };
 
@@ -470,7 +665,7 @@ export default function VectorStoreSelector({
                     backgroundColor: 'var(--background-subtle)',
                     border: '1px solid var(--border-color)',
                     borderRadius: '6px',
-                    color: 'var(--text-secondary)',
+                    color: selectedId === 'automatic' ? 'var(--primary-color)' : 'var(--text-secondary)',
                     fontSize: '13px',
                     cursor: disabled ? 'not-allowed' : 'pointer',
                     opacity: disabled ? 0.7 : 1,
@@ -479,31 +674,22 @@ export default function VectorStoreSelector({
                 }}
                 title="Selecionar base de conhecimento para pesquisa"
             >
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-                    <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"></path>
-                    <polyline points="14 2 14 8 20 8"></polyline>
-                </svg>
+                {getSelectedIcon()}
                 <div style={{
                     flexGrow: 1,
                     minWidth: 0, // Importante para permitir o truncamento
                     display: 'flex',
                     overflow: 'hidden'
                 }}>
-                    {loading ? (
-                        <span>Carregando...</span>
-                    ) : selectedStore ? (
-                        <span style={{
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap',
-                            width: '100%',
-                            display: 'block'
-                        }}>
-                            {selectedStore.name}
-                        </span>
-                    ) : (
-                        'Base de conhecimento'
-                    )}
+                    <span style={{
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                        width: '100%',
+                        display: 'block'
+                    }}>
+                        {getSelectedText()}
+                    </span>
                 </div>
                 <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
                     <polyline points="6 9 12 15 18 9"></polyline>

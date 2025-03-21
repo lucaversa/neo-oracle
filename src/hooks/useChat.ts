@@ -80,6 +80,45 @@ export function useChat(userId?: string): UseChatReturn {
         }
     }, [sessionId, defaultVectorStoreId]);
 
+    const getVectorStoreForQuery = useCallback(async (query: string): Promise<string[]> => {
+        // Se não for automático, retornar a selecionada
+        if (vectorStoreId !== 'automatic') {
+            return vectorStoreId ? [vectorStoreId] : searchableVectorStores;
+        }
+
+        try {
+            console.log('Selecionando vector store automaticamente para a consulta:', query.substring(0, 50) + '...');
+
+            // Chamar a API para selecionar automaticamente
+            const response = await fetch('/api/openai/auto-select', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ query })
+            });
+
+            if (!response.ok) {
+                console.error('Falha ao selecionar vector store automaticamente:', response.statusText);
+                // Em caso de erro, retornar todas as vector stores pesquisáveis
+                return searchableVectorStores;
+            }
+
+            const data = await response.json();
+            if (data && data.vector_store_id) {
+                console.log('Vector store selecionada automaticamente:', data.vector_store_id);
+                return [data.vector_store_id];
+            }
+
+            console.log('Nenhuma vector store retornada, usando todas as pesquisáveis');
+            return searchableVectorStores;
+        } catch (error) {
+            console.error('Erro ao selecionar vector store automaticamente:', error);
+            // Em caso de erro, retornar todas as vector stores pesquisáveis
+            return searchableVectorStores;
+        }
+    }, [vectorStoreId, searchableVectorStores]);
+
     // Função para selecionar vector store
     const selectVectorStore = useCallback((id: string) => {
         setVectorStoreId(id);
@@ -814,8 +853,9 @@ export function useChat(userId?: string): UseChatReturn {
             const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 segundos de timeout
 
             try {
-                // Preparar vector store IDs para pesquisa
-                const vectorStoresForSearch = vectorStoreId ? [vectorStoreId] : searchableVectorStores;
+                // Determinar quais vector stores usar (automático ou específico)
+                const vectorStoresForSearch = await getVectorStoreForQuery(content.trim());
+                console.log('Vector stores para pesquisa:', vectorStoresForSearch);
 
                 // Iniciar uma solicitação fetch para obter o stream
                 const response = await fetch('/api/openai', {
@@ -827,7 +867,7 @@ export function useChat(userId?: string): UseChatReturn {
                         messages: allMessages,
                         sessionId: trimmedSessionId,
                         userId: userId || 'anonymous',
-                        vectorStoreIds: vectorStoresForSearch // Incluir vector stores pesquisáveis
+                        vectorStoreIds: vectorStoresForSearch // Vector stores determinadas dinamicamente
                     }),
                     signal: controller.signal
                 });

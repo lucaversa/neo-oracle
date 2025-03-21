@@ -457,7 +457,7 @@ export default function VectorStoreSelector({
     };
 
     return (
-        <div>
+        <div style={{ width: '100%' }}>
             {/* Botão seletor */}
             <button
                 onClick={handleOpen}
@@ -474,24 +474,38 @@ export default function VectorStoreSelector({
                     fontSize: '13px',
                     cursor: disabled ? 'not-allowed' : 'pointer',
                     opacity: disabled ? 0.7 : 1,
-                    transition: 'all 0.2s'
+                    transition: 'all 0.2s',
+                    width: '100%' // Garantir que ocupa 100% da largura disponível
                 }}
                 title="Selecionar base de conhecimento para pesquisa"
             >
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
                     <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"></path>
                     <polyline points="14 2 14 8 20 8"></polyline>
                 </svg>
-                {loading ? (
-                    <span>Carregando...</span>
-                ) : selectedStore ? (
-                    <span style={{ maxWidth: '120px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {selectedStore.name}
-                    </span>
-                ) : (
-                    'Base de conhecimento'
-                )}
-                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <div style={{
+                    flexGrow: 1,
+                    minWidth: 0, // Importante para permitir o truncamento
+                    display: 'flex',
+                    overflow: 'hidden'
+                }}>
+                    {loading ? (
+                        <span>Carregando...</span>
+                    ) : selectedStore ? (
+                        <span style={{
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                            width: '100%',
+                            display: 'block'
+                        }}>
+                            {selectedStore.name}
+                        </span>
+                    ) : (
+                        'Base de conhecimento'
+                    )}
+                </div>
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
                     <polyline points="6 9 12 15 18 9"></polyline>
                 </svg>
             </button>

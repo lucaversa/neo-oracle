@@ -503,7 +503,7 @@ export default function ChatPage() {
                                                 color: 'var(--text-primary)',
                                                 marginBottom: '12px'
                                             }}>
-                                                Como posso te ajudar?
+                                                O que você quer saber sobre sua empresa?
                                             </h2>
                                             <p style={{
                                                 color: 'var(--text-secondary)',
@@ -573,7 +573,7 @@ export default function ChatPage() {
                                     ? "Criando nova conversa..."
                                     : sessionLimitReached
                                         ? "Limite de mensagens atingido. Crie uma nova conversa."
-                                        : "Como posso te ajudar?"
+                                        : "O que você quer saber sobre sua empresa?"
                             }
                             // Novas props para o seletor de vector store
                             onSelectVectorStore={handleSelectVectorStore}

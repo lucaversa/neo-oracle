@@ -53,7 +53,7 @@ export default function WelcomeScreen({ onNewChat, hasPreviousChats, isCreating 
                 marginBottom: '16px',
                 color: 'var(--text-primary)'
             }}>
-                Bem-vindo ao Oráculo
+                O que você quer saber sobre sua empresa?
             </h1>
 
             <p style={{

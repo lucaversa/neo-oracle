@@ -23,6 +23,18 @@ export default function ChatBubble({
     const [isVisible, setIsVisible] = useState(true);
     // Estado para controlar hover no botão de copiar
     const [isHovering, setIsHovering] = useState(false);
+    // Estado para controlar a animação
+    const [animate, setAnimate] = useState(false);
+
+    // Iniciar animação após montagem do componente
+    useEffect(() => {
+        // Pequeno atraso para permitir renderização inicial
+        const animationTimer = setTimeout(() => {
+            setAnimate(true);
+        }, 50);
+
+        return () => clearTimeout(animationTimer);
+    }, []);
 
     // Garantir que a bolha permanece visível durante o streaming
     useEffect(() => {
@@ -70,6 +82,9 @@ export default function ChatBubble({
         opacity: isHovering ? 1 : 0.85,
     };
 
+    // Definir as classes de animação
+    const animationClass = animate ? (isUser ? 'animate-slide-in-right' : 'animate-slide-in-left') : '';
+
     return (
         <div style={{
             display: 'flex',
@@ -92,7 +107,8 @@ export default function ChatBubble({
                     fontSize: '16px',
                     fontWeight: 'bold',
                     boxShadow: 'var(--shadow-md)',
-                    flexShrink: 0
+                    flexShrink: 0,
+                    animation: animate ? 'popIn 0.5s ease-out' : 'none',
                 }}>
                     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z" />
@@ -102,11 +118,14 @@ export default function ChatBubble({
                 </div>
             )}
 
-            <div style={{
-                display: 'flex',
-                flexDirection: 'column',
-                maxWidth: '80%'
-            }}>
+            <div
+                style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    maxWidth: '80%'
+                }}
+                className={animationClass}
+            >
                 {/* Bolha de mensagem */}
                 <div style={{
                     borderRadius: '18px',
@@ -120,7 +139,11 @@ export default function ChatBubble({
                     borderBottomRightRadius: isUser ? '4px' : undefined,
                     backgroundColor: isUser
                         ? 'var(--primary-color)'
-                        : (isDarkMode ? 'var(--background-subtle)' : 'var(--background-subtle)')
+                        : (isDarkMode ? 'var(--background-subtle)' : 'var(--background-subtle)'),
+                    animation: animate ? `${isUser ? 'slideInRight' : 'slideInLeft'} 0.3s ease-out` : 'none',
+                    transform: animate ? 'translateX(0)' : isUser ? 'translateX(30px)' : 'translateX(-30px)',
+                    opacity: animate ? 1 : 0,
+                    transition: 'transform 0.3s ease-out, opacity 0.3s ease-out',
                 }}>
                     <div style={{
                         whiteSpace: 'pre-wrap',
@@ -149,7 +172,10 @@ export default function ChatBubble({
                         onClick={copyToClipboard}
                         onMouseEnter={() => setIsHovering(true)}
                         onMouseLeave={() => setIsHovering(false)}
-                        style={copyButtonStyle}
+                        style={{
+                            ...copyButtonStyle,
+                            animation: animate ? 'fadeIn 0.5s ease-out 0.3s both' : 'none'
+                        }}
                         className="copy-button"
                     >
                         {copied ? (
@@ -195,7 +221,8 @@ export default function ChatBubble({
                     fontSize: '16px',
                     fontWeight: 'bold',
                     boxShadow: 'var(--shadow-md)',
-                    flexShrink: 0
+                    flexShrink: 0,
+                    animation: animate ? 'popIn 0.5s ease-out' : 'none',
                 }}>
                     {initial}
                 </div>

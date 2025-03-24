@@ -742,3 +742,129 @@ a:hover {
 .copy-button:active {
   transform: scale(0.95) !important;
 }
+
+/* Animações para o sidebar */
+@keyframes slideInRight {
+  from {
+    transform: translateX(20px);
+    opacity: 0;
+  }
+
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideInLeft {
+  from {
+    transform: translateX(-20px);
+    opacity: 0;
+  }
+
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes fadeOutUp {
+  from {
+    transform: translateY(0);
+    opacity: 1;
+  }
+
+  to {
+    transform: translateY(-10px);
+    opacity: 0;
+  }
+}
+
+@keyframes fadeInDown {
+  from {
+    transform: translateY(-10px);
+    opacity: 0;
+  }
+
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes shake {
+
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+
+  25% {
+    transform: translateX(-4px);
+  }
+
+  50% {
+    transform: translateX(0);
+  }
+
+  75% {
+    transform: translateX(4px);
+  }
+}
+
+.edit-form-animation {
+  animation: fadeInDown 0.3s ease-out;
+}
+
+.delete-confirm-animation {
+  animation: fadeInDown 0.3s ease-out;
+  background-color: rgba(239, 68, 68, 0.1);
+  transition: all 0.3s ease;
+}
+
+.delete-confirm-animation:hover {
+  background-color: rgba(239, 68, 68, 0.15);
+}
+
+.delete-exit-animation {
+  animation: fadeOutUp 0.3s ease-out;
+}
+
+.session-item-enter {
+  animation: slideInRight 0.3s ease-out;
+}
+
+.session-item-exit {
+  animation: fadeOutUp 0.3s ease-out;
+}
+
+.session-actions-animation {
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.session-actions-animation:hover {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.session-button-hover {
+  transition: all 0.2s ease;
+}
+
+.session-button-hover:hover {
+  background-color: var(--background-subtle) !important;
+  transform: translateY(-1px);
+}
+
+.delete-button-hover {
+  transition: all 0.2s ease;
+}
+
+.delete-button-hover:hover {
+  background-color: rgba(239, 68, 68, 0.15) !important;
+  color: var(--error-color) !important;
+}
+
+.shake-animation {
+  animation: shake 0.4s ease-in-out;
+}

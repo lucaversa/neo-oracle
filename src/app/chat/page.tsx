@@ -11,6 +11,7 @@ import Sidebar from '@/components/layout/Sidebar';
 import WelcomeScreen from '@/components/chat/WelcomeScreen';
 import { v4 as uuidv4 } from 'uuid';
 import ThinkingIndicator from '@/components/chat/ThinkingIndicator';
+import { ToastContainer, useToast } from '@/components/Toast'; // Import our new Toast component
 
 export default function ChatPage() {
     const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -20,7 +21,10 @@ export default function ChatPage() {
     const creatingSessionRef = useRef<boolean>(false);
     const [isCreatingNewSession, setIsCreatingNewSession] = useState(false);
     const [manualSessionChange, setManualSessionChange] = useState<boolean>(false);
-    const [localError, setLocalError] = useState<string | null>(null); // Estado local para erros
+    const [localError, setLocalError] = useState<string | null>(null);
+
+    // Initialize toast system
+    const { toasts, showError, showSuccess, showInfo, removeToast } = useToast();
 
     // Proteger a rota - redirecionar se não estiver autenticado
     useEffect(() => {
@@ -33,8 +37,8 @@ export default function ChatPage() {
     const {
         messages,
         sessionId,
-        vectorStoreId,       // Adicionado: ID da vector store selecionada
-        selectVectorStore,   // Adicionado: função para selecionar vector store
+        vectorStoreId,
+        selectVectorStore,
         loading,
         error,
         sendMessage,
@@ -52,6 +56,32 @@ export default function ChatPage() {
         hasEmptyChat,
         streamingContent,
     } = useChat(user?.id);
+
+    // Show error toast when error state changes
+    useEffect(() => {
+        if (error && error !== 'Selecione uma conversa existente ou crie uma nova.') {
+            // Add action button if session limit reached
+            if (sessionLimitReached) {
+                showError(error, {
+                    action: {
+                        label: 'Nova Conversa',
+                        onClick: handleNewSession
+                    }
+                });
+            } else {
+                showError(error);
+            }
+        }
+    }, [error]);
+
+    // Show error toast when local error state changes
+    useEffect(() => {
+        if (localError) {
+            showError(localError);
+            // Clear local error state after showing toast
+            setTimeout(() => setLocalError(null), 300);
+        }
+    }, [localError]);
 
     // Rolar para o final da conversa quando novas mensagens chegarem ou ao receber conteúdo streaming
     useEffect(() => {
@@ -77,6 +107,7 @@ export default function ChatPage() {
             processingTimer = setTimeout(() => {
                 console.log('Estado de processamento ativo por muito tempo, resetando...');
                 resetProcessingState();
+                showWarning('A resposta está demorando mais que o esperado. Tente novamente.');
             }, 45000);
         }
 
@@ -107,6 +138,13 @@ export default function ChatPage() {
 
     const handleLogout = async () => {
         await logout();
+    };
+
+    // Wrapper function for showing warning
+    const showWarning = (message: string, options?: any) => {
+        // This is needed because the hook destructuring doesn't include showWarning
+        // We could add it to the destructuring, but this is cleaner for the example
+        return useToast().showWarning(message, options);
     };
 
     // Função melhorada para criar nova sessão com transição suave
@@ -158,6 +196,7 @@ export default function ChatPage() {
             return generatedSessionId;
         } catch (error) {
             console.error(">> Erro ao criar nova sessão:", error);
+            showError("Erro ao criar nova sessão. Por favor, tente novamente.");
             return null;
         } finally {
             setTimeout(() => {
@@ -189,19 +228,17 @@ export default function ChatPage() {
     };
 
     // Função para renomear uma sessão de chat
-    // Corrigindo a função handleRenameSession com as linhas problemáticas
     const handleRenameSession = async (sessionId: string, newTitle: string) => {
-        // Não tentamos mais modificar o estado local diretamente
-        // Apenas delegamos para a função do hook
         try {
             // Chamar diretamente a função do hook
             const success = await renameSession(sessionId, newTitle);
 
             if (!success) {
-                // Caso queira exibir alguma mensagem de erro
                 setLocalError("Falha ao renomear a sessão. Tente novamente.");
+                return false;
             }
 
+            showSuccess("Conversa renomeada com sucesso!");
             return success;
         } catch (error) {
             console.error("Erro ao renomear sessão:", error);
@@ -212,7 +249,18 @@ export default function ChatPage() {
 
     // Função para excluir uma sessão de chat
     const handleDeleteSession = async (sessionId: string) => {
-        return await deleteSession(sessionId);
+        try {
+            const success = await deleteSession(sessionId);
+            if (success) {
+                showSuccess("Conversa excluída com sucesso!");
+            } else {
+                showError("Falha ao excluir a conversa. Tente novamente.");
+            }
+            return success;
+        } catch (error) {
+            showError("Erro ao excluir conversa. Tente novamente.");
+            return false;
+        }
     };
 
     // Função para selecionar uma vector store
@@ -250,6 +298,7 @@ export default function ChatPage() {
 
         if (sessionLimitReached) {
             // Criar automaticamente uma nova sessão se o limite for atingido
+            showInfo("Limite de mensagens atingido. Criando nova conversa...");
             const newSessionId = await handleNewSession();
             if (newSessionId) {
                 // Aguardar um momento para a mudança de estado ocorrer
@@ -272,6 +321,7 @@ export default function ChatPage() {
                 }
             } catch (error) {
                 console.error('Erro ao enviar mensagem:', error);
+                showError('Não foi possível enviar sua mensagem. Tente novamente.');
             }
         }
     };
@@ -297,6 +347,9 @@ export default function ChatPage() {
             backgroundColor: 'var(--background-main)',
             transition: 'background-color 0.3s'
         }}>
+            {/* Toast Container */}
+            <ToastContainer toasts={toasts} removeToast={removeToast} />
+
             {/* Sidebar - Modificado para incluir novas props */}
             <Sidebar
                 isOpen={sidebarOpen}
@@ -330,7 +383,6 @@ export default function ChatPage() {
                 />
 
                 {/* Overlay durante a criação de nova sessão */}
-                {/* Overlay durante a criação de nova sessão - Corrigido */}
                 {isCreatingNewSession && (
                     <div style={{
                         position: 'absolute',
@@ -430,34 +482,7 @@ export default function ChatPage() {
                                     gap: '8px',
                                     paddingBottom: '24px' // Espaço para o indicador "pensando"
                                 }}>
-                                    {(error || localError) && (error || localError) !== 'Selecione uma conversa existente ou crie uma nova.' && (
-                                        <div style={{
-                                            backgroundColor: 'rgba(239, 68, 68, 0.1)',
-                                            borderLeft: '4px solid var(--error-color)',
-                                            color: 'var(--error-color)',
-                                            padding: '16px',
-                                            marginBottom: '16px',
-                                            borderRadius: '4px'
-                                        }}>
-                                            <p>{error || localError}</p>
-                                            {sessionLimitReached && (
-                                                <button
-                                                    onClick={handleNewSession}
-                                                    style={{
-                                                        marginTop: '8px',
-                                                        padding: '6px 12px',
-                                                        backgroundColor: 'var(--primary-color)',
-                                                        color: 'white',
-                                                        borderRadius: '4px',
-                                                        border: 'none',
-                                                        cursor: 'pointer'
-                                                    }}
-                                                >
-                                                    Iniciar Nova Conversa
-                                                </button>
-                                            )}
-                                        </div>
-                                    )}
+                                    {/* Removido o bloco de erro do chat container já que agora usamos toasts */}
 
                                     {/* MODIFICADO: Condição para mostrar tela inicial ou mensagens */}
                                     {(isNewConversation && messages.length === 0) ? (

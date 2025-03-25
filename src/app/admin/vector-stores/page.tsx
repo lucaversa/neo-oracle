@@ -14,6 +14,7 @@ import {
 import CreateVectorStoreModal from '@/components/admin/CreateVectorStoreModal';
 import DeleteConfirmationModal from '@/components/admin/DeleteConfirmationModal';
 import VectorStoreCard from '@/components/admin/VectorStoreCard';
+import TutorialModal from '@/components/admin/TutorialModal';
 
 function VectorStoresPage() {
     const [vectorStores, setVectorStores] = useState<VectorStore[]>([]);
@@ -21,6 +22,7 @@ function VectorStoresPage() {
     const [error, setError] = useState<string | null>(null);
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
     const [deleteTarget, setDeleteTarget] = useState<VectorStore | null>(null);
+    const [isTutorialOpen, setIsTutorialOpen] = useState(false);
     const { user } = useAuth();
     const router = useRouter();
 
@@ -177,29 +179,58 @@ function VectorStoresPage() {
                         Gerenciar Vector Stores
                     </h1>
                 </div>
-                <button
-                    onClick={() => setIsCreateModalOpen(true)}
-                    style={{
-                        backgroundColor: 'var(--primary-color)',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '8px',
-                        padding: '10px 16px',
-                        fontSize: '14px',
-                        fontWeight: '500',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        transition: 'all 0.2s'
-                    }}
-                >
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <line x1="12" y1="5" x2="12" y2="19"></line>
-                        <line x1="5" y1="12" x2="19" y2="12"></line>
-                    </svg>
-                    Nova Vector Store
-                </button>
+                <div style={{ display: 'flex', gap: '12px' }}>
+                    {/* Botão Tutorial */}
+                    <button
+                        onClick={() => setIsTutorialOpen(true)}
+                        style={{
+                            backgroundColor: 'var(--background-subtle)',
+                            color: 'var(--text-secondary)',
+                            border: '1px solid var(--border-color)',
+                            borderRadius: '8px',
+                            padding: '10px 16px',
+                            fontSize: '14px',
+                            fontWeight: '500',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            transition: 'all 0.2s'
+                        }}
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <line x1="12" y1="16" x2="12" y2="12"></line>
+                            <line x1="12" y1="8" x2="12.01" y2="8"></line>
+                        </svg>
+                        Tutorial
+                    </button>
+
+                    {/* Botão Nova Vector Store */}
+                    <button
+                        onClick={() => setIsCreateModalOpen(true)}
+                        style={{
+                            backgroundColor: 'var(--primary-color)',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '8px',
+                            padding: '10px 16px',
+                            fontSize: '14px',
+                            fontWeight: '500',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            transition: 'all 0.2s'
+                        }}
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <line x1="12" y1="5" x2="12" y2="19"></line>
+                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                        </svg>
+                        Nova Vector Store
+                    </button>
+                </div>
             </div>
 
             {/* Conteúdo principal */}
@@ -332,29 +363,55 @@ function VectorStoresPage() {
                                 }}>
                                     Crie uma nova Vector Store para adicionar documentos e permitir consultas contextuais no chat.
                                 </p>
-                                <button
-                                    onClick={() => setIsCreateModalOpen(true)}
-                                    style={{
-                                        backgroundColor: 'var(--primary-color)',
-                                        color: 'white',
-                                        border: 'none',
-                                        borderRadius: '8px',
-                                        padding: '10px 20px',
-                                        fontSize: '14px',
-                                        fontWeight: '500',
-                                        cursor: 'pointer',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '8px',
-                                        transition: 'all 0.2s'
-                                    }}
-                                >
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                        <line x1="12" y1="5" x2="12" y2="19"></line>
-                                        <line x1="5" y1="12" x2="19" y2="12"></line>
-                                    </svg>
-                                    Criar primeira Vector Store
-                                </button>
+                                <div style={{ display: 'flex', gap: '12px' }}>
+                                    <button
+                                        onClick={() => setIsTutorialOpen(true)}
+                                        style={{
+                                            backgroundColor: 'var(--background-subtle)',
+                                            color: 'var(--text-secondary)',
+                                            border: '1px solid var(--border-color)',
+                                            borderRadius: '8px',
+                                            padding: '10px 20px',
+                                            fontSize: '14px',
+                                            fontWeight: '500',
+                                            cursor: 'pointer',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '8px',
+                                            transition: 'all 0.2s'
+                                        }}
+                                    >
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                            <circle cx="12" cy="12" r="10"></circle>
+                                            <line x1="12" y1="16" x2="12" y2="12"></line>
+                                            <line x1="12" y1="8" x2="12.01" y2="8"></line>
+                                        </svg>
+                                        Ver tutorial
+                                    </button>
+                                    <button
+                                        onClick={() => setIsCreateModalOpen(true)}
+                                        style={{
+                                            backgroundColor: 'var(--primary-color)',
+                                            color: 'white',
+                                            border: 'none',
+                                            borderRadius: '8px',
+                                            padding: '10px 20px',
+                                            fontSize: '14px',
+                                            fontWeight: '500',
+                                            cursor: 'pointer',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '8px',
+                                            transition: 'all 0.2s'
+                                        }}
+                                    >
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                            <line x1="12" y1="5" x2="12" y2="19"></line>
+                                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                                        </svg>
+                                        Criar primeira Vector Store
+                                    </button>
+                                </div>
                             </div>
                         ) : (
                             <>
@@ -429,6 +486,12 @@ function VectorStoresPage() {
                 onConfirm={handleDeleteVectorStore}
                 itemName={deleteTarget?.name || ''}
                 itemType="Vector Store"
+            />
+
+            {/* Modal Tutorial */}
+            <TutorialModal
+                isOpen={isTutorialOpen}
+                onClose={() => setIsTutorialOpen(false)}
             />
         </div>
     );

@@ -9,6 +9,7 @@ import { getVectorStore } from '@/services/vectorStoreService';
 import FileList from '@/components/admin/FileList';
 import FileUpload from '@/components/admin/FileUpload';
 import HelpTooltip from '@/components/common/HelpTooltip';
+import TutorialModal from '@/components/admin/TutorialModal';
 
 function VectorStoreDetailPage() {
     // Usar o hook useParams() em vez de acessar props.params diretamente
@@ -20,6 +21,7 @@ function VectorStoreDetailPage() {
     const [loading, setLoading] = useState<boolean>(true);
     const [error, setError] = useState<string | null>(null);
     const [refreshTrigger, setRefreshTrigger] = useState<number>(0);
+    const [isTutorialOpen, setIsTutorialOpen] = useState(false);
     const router = useRouter();
 
     useEffect(() => {
@@ -201,28 +203,57 @@ function VectorStoreDetailPage() {
                         {vectorStore?.name || 'Carregando...'}
                     </h1>
                 </div>
-                <button
-                    onClick={handleRefresh}
-                    style={{
-                        padding: '8px 16px',
-                        backgroundColor: 'transparent',
-                        border: '1px solid var(--border-color)',
-                        borderRadius: '6px',
-                        color: 'var(--text-secondary)',
-                        fontSize: '14px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        cursor: 'pointer'
-                    }}
-                >
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M23 4v6h-6"></path>
-                        <path d="M1 20v-6h6"></path>
-                        <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
-                    </svg>
-                    Atualizar
-                </button>
+                <div style={{ display: 'flex', gap: '12px' }}>
+                    {/* Botão Tutorial */}
+                    <button
+                        onClick={() => setIsTutorialOpen(true)}
+                        style={{
+                            backgroundColor: 'var(--background-subtle)',
+                            color: 'var(--text-secondary)',
+                            border: '1px solid var(--border-color)',
+                            borderRadius: '6px',
+                            padding: '8px 16px',
+                            fontSize: '14px',
+                            fontWeight: '500',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            transition: 'all 0.2s'
+                        }}
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <line x1="12" y1="16" x2="12" y2="12"></line>
+                            <line x1="12" y1="8" x2="12.01" y2="8"></line>
+                        </svg>
+                        Tutorial
+                    </button>
+
+                    {/* Botão de Atualizar */}
+                    <button
+                        onClick={handleRefresh}
+                        style={{
+                            padding: '8px 16px',
+                            backgroundColor: 'transparent',
+                            border: '1px solid var(--border-color)',
+                            borderRadius: '6px',
+                            color: 'var(--text-secondary)',
+                            fontSize: '14px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            cursor: 'pointer'
+                        }}
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M23 4v6h-6"></path>
+                            <path d="M1 20v-6h6"></path>
+                            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                        </svg>
+                        Atualizar
+                    </button>
+                </div>
             </div>
 
             {/* Conteúdo principal */}
@@ -341,22 +372,51 @@ function VectorStoreDetailPage() {
                     border: '1px solid var(--border-color)',
                     boxShadow: 'var(--shadow-sm)'
                 }}>
-                    <h2 style={{
-                        fontSize: '18px',
-                        fontWeight: '600',
-                        color: 'var(--text-primary)',
-                        marginBottom: '16px',
+                    <div style={{
                         display: 'flex',
                         alignItems: 'center',
-                        gap: '8px'
+                        justifyContent: 'space-between',
+                        marginBottom: '16px'
                     }}>
-                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                            <polyline points="17 8 12 3 7 8"></polyline>
-                            <line x1="12" y1="3" x2="12" y2="15"></line>
-                        </svg>
-                        Upload de Arquivos
-                    </h2>
+                        <h2 style={{
+                            fontSize: '18px',
+                            fontWeight: '600',
+                            color: 'var(--text-primary)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px'
+                        }}>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                <polyline points="17 8 12 3 7 8"></polyline>
+                                <line x1="12" y1="3" x2="12" y2="15"></line>
+                            </svg>
+                            Upload de Arquivos
+                        </h2>
+
+                        <button
+                            onClick={() => setIsTutorialOpen(true)}
+                            style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                padding: '6px 12px',
+                                backgroundColor: 'transparent',
+                                border: '1px solid var(--border-color)',
+                                borderRadius: '6px',
+                                color: 'var(--text-tertiary)',
+                                fontSize: '13px',
+                                cursor: 'pointer'
+                            }}
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <circle cx="12" cy="12" r="10"></circle>
+                                <line x1="12" y1="16" x2="12" y2="12"></line>
+                                <line x1="12" y1="8" x2="12.01" y2="8"></line>
+                            </svg>
+                            Ver requisitos
+                        </button>
+                    </div>
                     <p style={{
                         fontSize: '14px',
                         color: 'var(--text-secondary)',
@@ -399,7 +459,7 @@ function VectorStoreDetailPage() {
                         color: 'var(--text-secondary)',
                         marginBottom: '16px'
                     }}>
-                        Gerencie os documentos indexados nesta Vector Store. A exclusão de um arquivo o remove apenas da Vector Store, não o exclui permanentemente.
+                        Gerencie os documentos indexados nesta Vector Store. A exclusão de um arquivo o remove permanentemente.
                     </p>
                     <FileList
                         vectorStoreId={vector_store_id}
@@ -407,6 +467,12 @@ function VectorStoreDetailPage() {
                     />
                 </div>
             </div>
+
+            {/* Modal Tutorial */}
+            <TutorialModal
+                isOpen={isTutorialOpen}
+                onClose={() => setIsTutorialOpen(false)}
+            />
         </div>
     );
 }

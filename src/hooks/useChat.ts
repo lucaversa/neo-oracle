@@ -5,7 +5,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { ChatMessage, UserChatSession, SessionInfo } from '@/types/chat';
 
 // Constante para o limite de mensagens humanas por chat
-const MAX_HUMAN_MESSAGES_PER_SESSION = 5;
+const MAX_HUMAN_MESSAGES_PER_SESSION = 8;
 
 interface UseChatReturn {
     messages: ChatMessage[];

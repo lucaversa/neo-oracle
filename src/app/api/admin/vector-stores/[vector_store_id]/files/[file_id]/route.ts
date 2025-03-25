@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// DELETE endpoint para remover um arquivo de uma vector store
+// DELETE endpoint para remover um arquivo de uma vector store E também do storage
 export async function DELETE(request: NextRequest, context: unknown) {
     const { params } = context as { params: { vector_store_id: string; file_id: string } };
     const { vector_store_id, file_id } = params;
@@ -23,7 +23,7 @@ export async function DELETE(request: NextRequest, context: unknown) {
             file_id
         });
 
-        // Chamar API da OpenAI para remover arquivo da vector store
+        // 1. Primeiro removemos o arquivo da vector store
         const openaiResponse = await fetch(`https://api.openai.com/v1/vector_stores/${vector_store_id}/files/${file_id}`, {
             method: 'DELETE',
             headers: {
@@ -33,10 +33,10 @@ export async function DELETE(request: NextRequest, context: unknown) {
             }
         });
 
-        // Se o status for 404, consideramos como sucesso também (o recurso já não existe)
+        // Se houve erro na remoção do arquivo da vector store (não sendo 404)
         if (!openaiResponse.ok && openaiResponse.status !== 404) {
             const errorText = await openaiResponse.text();
-            console.error('Erro na resposta da API OpenAI:', {
+            console.error('Erro na resposta da API OpenAI (remoção da vector store):', {
                 status: openaiResponse.status,
                 statusText: openaiResponse.statusText,
                 data: errorText
@@ -48,31 +48,66 @@ export async function DELETE(request: NextRequest, context: unknown) {
             );
         }
 
-        // Para 404, indicamos sucesso mas com uma mensagem específica
+        // 2. Agora, vamos deletar o arquivo do storage da OpenAI
+        console.log('Enviando requisição DELETE para excluir arquivo do storage:', file_id);
+
+        const deleteResponse = await fetch(`https://api.openai.com/v1/files/${file_id}`, {
+            method: 'DELETE',
+            headers: {
+                'Authorization': `Bearer ${openaiKey}`,
+                'Content-Type': 'application/json',
+                'OpenAI-Beta': 'assistants=v2'
+            }
+        });
+
+        // Capturar resposta do delete do storage
+        let deleteError = null;
+        let fileDeleteDetails = null;
+
+        if (!deleteResponse.ok && deleteResponse.status !== 404) {
+            const errorText = await deleteResponse.text();
+            console.error('Erro na resposta da API OpenAI (exclusão do storage):', {
+                status: deleteResponse.status,
+                statusText: deleteResponse.statusText,
+                data: errorText
+            });
+            deleteError = {
+                status: deleteResponse.status,
+                message: deleteResponse.statusText,
+                details: errorText
+            };
+        } else {
+            try {
+                const responseText = await deleteResponse.text();
+                if (responseText) {
+                    fileDeleteDetails = JSON.parse(responseText);
+                }
+            } catch (e) {
+                console.warn('Resposta da exclusão do storage sem corpo ou não JSON:', e);
+            }
+        }
+
+        // Status 404 na vector store = já não existe na vector store
         if (openaiResponse.status === 404) {
             return NextResponse.json({
                 success: true,
-                message: 'Arquivo não encontrado na vector store, mas considerado como removido.'
+                message: 'Arquivo não encontrado na vector store, mas considerado como removido.',
+                file_storage_deleted: deleteResponse.ok || deleteResponse.status === 404,
+                file_storage_error: deleteError,
+                file_delete_details: fileDeleteDetails
             });
         }
 
-        // Tentar obter o corpo da resposta para logging
-        let responseData;
-        try {
-            const responseText = await openaiResponse.text();
-            if (responseText) {
-                responseData = JSON.parse(responseText);
-            }
-        } catch (e) {
-            console.warn('Resposta sem corpo ou não JSON:', e);
-        }
-
+        // Resposta final
         return NextResponse.json({
             success: true,
-            message: 'Arquivo removido da vector store com sucesso',
-            ...responseData,
-            id: file_id,
-            vector_store_id
+            message: 'Arquivo removido da vector store com sucesso' +
+                (deleteResponse.ok ? ' e excluído do storage' : ' mas houve erro ao excluir do storage'),
+            vector_store_id,
+            file_id,
+            file_storage_deleted: deleteResponse.ok || deleteResponse.status === 404,
+            file_storage_error: deleteError,
+            file_delete_details: fileDeleteDetails
         });
     } catch (error) {
         console.error('Erro ao remover arquivo da vector store:', error);

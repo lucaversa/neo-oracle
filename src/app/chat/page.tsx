@@ -9,8 +9,57 @@ import ChatInput from '@/components/chat/ChatInput';
 import Header from '@/components/layout/Header';
 import Sidebar from '@/components/layout/Sidebar';
 import WelcomeScreen from '@/components/chat/WelcomeScreen';
-import { v4 as uuidv4 } from 'uuid';
 import ThinkingIndicator from '@/components/chat/ThinkingIndicator';
+import MessageLimitOverlay from '@/components/chat/MessageLimitOverlay';
+import { v4 as uuidv4 } from 'uuid';
+
+// Componente Toast para exibir erros
+const ErrorToast = ({ message, onClose }: { message: string, onClose: () => void }) => {
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            if (onClose) onClose();
+        }, 5000); // Fecha automaticamente após 5 segundos
+
+        return () => clearTimeout(timer);
+    }, [onClose]);
+
+    return (
+        <div style={{
+            position: 'fixed',
+            bottom: '24px',
+            right: '24px',
+            backgroundColor: 'var(--error-color)',
+            color: 'white',
+            padding: '12px 16px',
+            borderRadius: '8px',
+            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+            zIndex: 1000,
+            maxWidth: '300px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            animation: 'fadeIn 0.3s ease-out'
+        }}>
+            <div>
+                <p style={{ margin: 0, fontWeight: 500 }}>Erro</p>
+                <p style={{ margin: '4px 0 0 0', fontSize: '14px' }}>{message}</p>
+            </div>
+            <button
+                onClick={onClose}
+                style={{
+                    background: 'none',
+                    border: 'none',
+                    color: 'white',
+                    cursor: 'pointer',
+                    marginLeft: '12px',
+                    padding: '4px'
+                }}
+            >
+                ✕
+            </button>
+        </div>
+    );
+};
 
 export default function ChatPage() {
     const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -20,7 +69,18 @@ export default function ChatPage() {
     const creatingSessionRef = useRef<boolean>(false);
     const [isCreatingNewSession, setIsCreatingNewSession] = useState(false);
     const [manualSessionChange, setManualSessionChange] = useState<boolean>(false);
-    const [localError, setLocalError] = useState<string | null>(null); // Estado local para erros
+    const [localError, setLocalError] = useState<string | null>(null);
+    const [showErrorToast, setShowErrorToast] = useState(false); // Novo estado para controlar o toast
+
+    // Função para mostrar erros de forma genérica
+    const handleError = (errorMessage: string) => {
+        console.error("Erro original:", errorMessage);
+        // Mensagem de erro genérica
+        setLocalError("Ocorreu um erro ao processar sua solicitação. Tente novamente.");
+        setShowErrorToast(true);
+    };
+
+    // Este useEffect será movido para depois da declaração do hook useChat
 
     // Proteger a rota - redirecionar se não estiver autenticado
     useEffect(() => {
@@ -33,8 +93,8 @@ export default function ChatPage() {
     const {
         messages,
         sessionId,
-        vectorStoreId,       // Adicionado: ID da vector store selecionada
-        selectVectorStore,   // Adicionado: função para selecionar vector store
+        vectorStoreId,
+        selectVectorStore,
         loading,
         error,
         sendMessage,
@@ -52,6 +112,13 @@ export default function ChatPage() {
         hasEmptyChat,
         streamingContent,
     } = useChat(user?.id);
+
+    // Monitorar erros do hook useChat (movido para depois da declaração do useChat)
+    useEffect(() => {
+        if (error && error !== 'Selecione uma conversa existente ou crie uma nova.') {
+            handleError(error);
+        }
+    }, [error]);
 
     // Rolar para o final da conversa quando novas mensagens chegarem ou ao receber conteúdo streaming
     useEffect(() => {
@@ -117,7 +184,7 @@ export default function ChatPage() {
         // Não permitir criar nova sessão se estiver processando uma resposta
         if (isProcessing) {
             console.log("Processando uma resposta. Não é possível criar nova sessão agora.");
-            setLocalError("Aguarde a resposta atual antes de criar uma nova conversa");
+            handleError("Aguarde a resposta atual antes de criar uma nova conversa");
             return null;
         }
 
@@ -158,6 +225,7 @@ export default function ChatPage() {
             return generatedSessionId;
         } catch (error) {
             console.error(">> Erro ao criar nova sessão:", error);
+            handleError("Erro ao criar nova sessão");
             return null;
         } finally {
             setTimeout(() => {
@@ -188,31 +256,32 @@ export default function ChatPage() {
         }, 1500);
     };
 
-    // Função para renomear uma sessão de chat
-    // Corrigindo a função handleRenameSession com as linhas problemáticas
+    // Função para renomear uma sessão de chat (modificada para usar handleError)
     const handleRenameSession = async (sessionId: string, newTitle: string) => {
-        // Não tentamos mais modificar o estado local diretamente
-        // Apenas delegamos para a função do hook
         try {
             // Chamar diretamente a função do hook
             const success = await renameSession(sessionId, newTitle);
 
             if (!success) {
-                // Caso queira exibir alguma mensagem de erro
-                setLocalError("Falha ao renomear a sessão. Tente novamente.");
+                handleError("Não foi possível renomear a conversa");
             }
 
             return success;
         } catch (error) {
             console.error("Erro ao renomear sessão:", error);
-            setLocalError("Erro ao renomear sessão: " + String(error));
+            handleError("Erro ao renomear a conversa");
             return false;
         }
     };
 
     // Função para excluir uma sessão de chat
     const handleDeleteSession = async (sessionId: string) => {
-        return await deleteSession(sessionId);
+        try {
+            return await deleteSession(sessionId);
+        } catch {
+            handleError("Erro ao excluir a conversa");
+            return false;
+        }
     };
 
     // Função para selecionar uma vector store
@@ -272,6 +341,7 @@ export default function ChatPage() {
                 }
             } catch (error) {
                 console.error('Erro ao enviar mensagem:', error);
+                handleError("Erro ao enviar mensagem");
             }
         }
     };
@@ -329,8 +399,18 @@ export default function ChatPage() {
                     userName={userName}
                 />
 
+                {/* Toast de erro */}
+                {showErrorToast && localError && (
+                    <ErrorToast
+                        message={localError}
+                        onClose={() => {
+                            setShowErrorToast(false);
+                            setLocalError(null);
+                        }}
+                    />
+                )}
+
                 {/* Overlay durante a criação de nova sessão */}
-                {/* Overlay durante a criação de nova sessão - Corrigido */}
                 {isCreatingNewSession && (
                     <div style={{
                         position: 'absolute',
@@ -430,33 +510,68 @@ export default function ChatPage() {
                                     gap: '8px',
                                     paddingBottom: '24px' // Espaço para o indicador "pensando"
                                 }}>
-                                    {(error || localError) && (error || localError) !== 'Selecione uma conversa existente ou crie uma nova.' && (
-                                        <div style={{
-                                            backgroundColor: 'rgba(239, 68, 68, 0.1)',
-                                            borderLeft: '4px solid var(--error-color)',
-                                            color: 'var(--error-color)',
-                                            padding: '16px',
-                                            marginBottom: '16px',
-                                            borderRadius: '4px'
-                                        }}>
-                                            <p>{error || localError}</p>
-                                            {sessionLimitReached && (
+                                    {/* Notificação avançada quando o limite de mensagens é atingido */}
+                                    {sessionLimitReached && !isCreatingNewSession && (
+                                        <>
+                                            {/* Banner de alerta no topo da conversa */}
+                                            <div style={{
+                                                backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                                                borderLeft: '4px solid var(--error-color)',
+                                                color: 'var(--text-primary)',
+                                                padding: '16px',
+                                                marginBottom: '16px',
+                                                borderRadius: '8px',
+                                                boxShadow: '0 2px 8px rgba(0, 0, 0, 0.05)',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'space-between',
+                                                gap: '12px'
+                                            }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                                    <div style={{
+                                                        backgroundColor: 'rgba(239, 68, 68, 0.2)',
+                                                        borderRadius: '50%',
+                                                        width: '36px',
+                                                        height: '36px',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        justifyContent: 'center'
+                                                    }}>
+                                                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--error-color)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+                                                        </svg>
+                                                    </div>
+                                                    <div>
+                                                        <p style={{ margin: 0, fontWeight: 500 }}>Limite de mensagens desta conversa atingido</p>
+                                                        <p style={{ margin: '4px 0 0 0', fontSize: '14px', color: 'var(--text-secondary)' }}>
+                                                            Para continuar conversando, inicie uma nova conversa
+                                                        </p>
+                                                    </div>
+                                                </div>
                                                 <button
                                                     onClick={handleNewSession}
                                                     style={{
-                                                        marginTop: '8px',
-                                                        padding: '6px 12px',
+                                                        padding: '8px 16px',
                                                         backgroundColor: 'var(--primary-color)',
                                                         color: 'white',
-                                                        borderRadius: '4px',
+                                                        borderRadius: '6px',
                                                         border: 'none',
-                                                        cursor: 'pointer'
+                                                        cursor: 'pointer',
+                                                        fontWeight: 500,
+                                                        whiteSpace: 'nowrap',
+                                                        flexShrink: 0,
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '6px'
                                                     }}
                                                 >
-                                                    Iniciar Nova Conversa
+                                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                        <path d="M12 5v14M5 12h14" />
+                                                    </svg>
+                                                    Nova Conversa
                                                 </button>
-                                            )}
-                                        </div>
+                                            </div>
+                                        </>
                                     )}
 
                                     {/* MODIFICADO: Condição para mostrar tela inicial ou mensagens */}
@@ -547,9 +662,9 @@ export default function ChatPage() {
 
                 {/* Footer: ThinkingIndicator + ChatInput */}
                 {!isWelcomeScreenActive && (
-                    <div style={{ width: '100%' }}>
+                    <div style={{ width: '100%', position: 'relative' }}>
                         {/* Indicador "Oráculo está pensando" centralizado acima do ChatInput */}
-                        {isProcessing && (
+                        {isProcessing && !sessionLimitReached && (
                             <div style={{
                                 width: '100%',
                                 display: 'flex',
@@ -564,21 +679,26 @@ export default function ChatPage() {
                             </div>
                         )}
 
-                        <ChatInput
-                            onSendMessage={handleSendMessage}
-                            disabled={loading || sessionLimitReached || isCreatingNewSession}
-                            isThinking={isProcessing}
-                            placeholder={
-                                isCreatingNewSession
-                                    ? "Criando nova conversa..."
-                                    : sessionLimitReached
-                                        ? "Limite de mensagens atingido. Crie uma nova conversa."
-                                        : "O que você quer saber sobre sua empresa?"
-                            }
-                            // Novas props para o seletor de vector store
-                            onSelectVectorStore={handleSelectVectorStore}
-                            selectedVectorStoreId={vectorStoreId}
-                        />
+                        {/* Overlay de limite de mensagens */}
+                        {sessionLimitReached && !isCreatingNewSession ? (
+                            <MessageLimitOverlay onNewSession={handleNewSession} />
+                        ) : (
+                            <ChatInput
+                                onSendMessage={handleSendMessage}
+                                disabled={loading || sessionLimitReached || isCreatingNewSession}
+                                isThinking={isProcessing}
+                                placeholder={
+                                    isCreatingNewSession
+                                        ? "Criando nova conversa..."
+                                        : sessionLimitReached
+                                            ? "Limite de mensagens atingido. Crie uma nova conversa."
+                                            : "O que você quer saber sobre sua empresa?"
+                                }
+                                // Novas props para o seletor de vector store
+                                onSelectVectorStore={handleSelectVectorStore}
+                                selectedVectorStoreId={vectorStoreId}
+                            />
+                        )}
                     </div>
                 )}
             </div>

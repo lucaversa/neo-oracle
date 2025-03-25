@@ -11,6 +11,16 @@ interface VectorStoreUpdateData {
     is_default?: boolean;
 }
 
+// Interface para os arquivos retornados pela API da OpenAI
+interface OpenAIVectorStoreFile {
+    id: string;
+    object: string;
+    created_at: number;
+    vector_store_id: string;
+    purpose: string;
+    [key: string]: unknown; // Para outros campos que possam existir
+}
+
 export async function GET(request: Request) {
     try {
         // Extrair o ID diretamente da URL
@@ -255,7 +265,38 @@ export async function DELETE(request: Request) {
             return NextResponse.json({ error: 'ID do vector_store é obrigatório' }, { status: 400 });
         }
 
-        // 1. Primeiro excluir do Supabase para garantir que mesmo se a exclusão na OpenAI falhar,
+        const openaiKey = process.env.OPENAI_API_KEY;
+        if (!openaiKey) {
+            return NextResponse.json({ error: 'API key não configurada' }, { status: 500 });
+        }
+
+        // 0. Primeiro, listar todos os arquivos associados à vector store
+        console.log('[DEBUG] Listando arquivos da vector store antes de excluí-la:', vector_store_id);
+
+        const filesResponse = await fetch(`https://api.openai.com/v1/vector_stores/${vector_store_id}/files?limit=100`, {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${openaiKey}`,
+                'Content-Type': 'application/json',
+                'OpenAI-Beta': 'assistants=v2'
+            }
+        });
+
+        let filesToDelete: string[] = [];
+
+        if (filesResponse.ok) {
+            const filesData = await filesResponse.json();
+            if (filesData.data && Array.isArray(filesData.data)) {
+                // Extrair os IDs dos arquivos usando a interface correta
+                filesToDelete = filesData.data.map((file: OpenAIVectorStoreFile) => file.id);
+                console.log(`[DEBUG] Encontrados ${filesToDelete.length} arquivos para excluir`);
+            }
+        } else {
+            console.warn('[DEBUG] Não foi possível listar arquivos da vector store:', filesResponse.statusText);
+            // Continuar mesmo com erro para tentar excluir a vector store
+        }
+
+        // 1. Deletar do Supabase para garantir que mesmo se a exclusão na OpenAI falhar,
         // o registro tenha sido removido do banco
         let supabaseDeleteSuccess = false;
         try {
@@ -276,15 +317,60 @@ export async function DELETE(request: Request) {
             // Continuamos mesmo com erro no banco
         }
 
-        // 2. Agora excluir da OpenAI
-        const openaiKey = process.env.OPENAI_API_KEY;
-        if (!openaiKey) {
-            return NextResponse.json({
-                error: 'API key não configurada',
-                supabaseDeleteSuccess
-            }, { status: 500 });
+        // 2. Remover arquivos da vector store e depois excluí-los do storage
+        const deletedFiles: Array<{ fileId: string, removedFromVector: boolean, deletedFromStorage: boolean }> = [];
+
+        if (filesToDelete.length > 0) {
+            console.log(`[DEBUG] Iniciando exclusão de ${filesToDelete.length} arquivos`);
+
+            // Processar cada arquivo associado à vector store
+            for (const fileId of filesToDelete) {
+                const fileResult = {
+                    fileId,
+                    removedFromVector: false,
+                    deletedFromStorage: false
+                };
+
+                try {
+                    // 2.1 Remover arquivo da vector store
+                    const removeResponse = await fetch(`https://api.openai.com/v1/vector_stores/${vector_store_id}/files/${fileId}`, {
+                        method: 'DELETE',
+                        headers: {
+                            'Authorization': `Bearer ${openaiKey}`,
+                            'Content-Type': 'application/json',
+                            'OpenAI-Beta': 'assistants=v2'
+                        }
+                    });
+
+                    fileResult.removedFromVector = removeResponse.ok || removeResponse.status === 404;
+
+                    // 2.2 Excluir arquivo do storage
+                    const deleteFileResponse = await fetch(`https://api.openai.com/v1/files/${fileId}`, {
+                        method: 'DELETE',
+                        headers: {
+                            'Authorization': `Bearer ${openaiKey}`,
+                            'Content-Type': 'application/json',
+                            'OpenAI-Beta': 'assistants=v2'
+                        }
+                    });
+
+                    fileResult.deletedFromStorage = deleteFileResponse.ok || deleteFileResponse.status === 404;
+
+                } catch (fileError) {
+                    console.error(`[DEBUG] Erro ao excluir arquivo ${fileId}:`, fileError);
+                }
+
+                deletedFiles.push(fileResult);
+            }
+
+            console.log(`[DEBUG] Resumo da exclusão de arquivos:`, {
+                total: deletedFiles.length,
+                removedFromVector: deletedFiles.filter(f => f.removedFromVector).length,
+                deletedFromStorage: deletedFiles.filter(f => f.deletedFromStorage).length
+            });
         }
 
+        // 3. Excluir a vector store da OpenAI
         console.log('[DEBUG] Enviando requisição DELETE para a API OpenAI para', vector_store_id);
 
         const openaiResponse = await fetch(`https://api.openai.com/v1/vector_stores/${vector_store_id}`, {
@@ -309,7 +395,8 @@ export async function DELETE(request: Request) {
                 {
                     error: `Erro na API da OpenAI: ${openaiResponse.statusText}`,
                     details: errorText,
-                    supabaseDeleteSuccess
+                    supabaseDeleteSuccess,
+                    files: deletedFiles
                 },
                 { status: openaiResponse.status }
             );
@@ -321,14 +408,25 @@ export async function DELETE(request: Request) {
             return NextResponse.json({
                 success: true,
                 message: 'Vector store não encontrada na API, mas considerada como excluída.',
-                supabaseDeleteSuccess
+                supabaseDeleteSuccess,
+                files: {
+                    total: deletedFiles.length,
+                    deleted: deletedFiles.filter(f => f.deletedFromStorage).length,
+                    details: deletedFiles
+                }
             });
         }
 
         console.log('[DEBUG] Vector store excluída com sucesso da OpenAI');
         return NextResponse.json({
             success: true,
-            message: 'Vector store excluída com sucesso' + (supabaseDeleteSuccess ? ' da API e do banco de dados' : ' da API (falha no banco de dados)')
+            message: 'Vector store excluída com sucesso' +
+                (supabaseDeleteSuccess ? ' da API e do banco de dados' : ' da API (falha no banco de dados)'),
+            files: {
+                total: deletedFiles.length,
+                deleted: deletedFiles.filter(f => f.deletedFromStorage).length,
+                details: deletedFiles
+            }
         });
     } catch (error) {
         console.error('[DEBUG] Erro geral no endpoint DELETE:', error);

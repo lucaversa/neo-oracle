@@ -292,7 +292,7 @@ export async function setDefaultVectorStore(id: string): Promise<VectorStore> {
     }
 }
 
-export async function deleteVectorStore(id: string): Promise<void> {
+export async function deleteVectorStore(id: string): Promise<{ success: boolean, filesDeleted: number }> {
     try {
         console.log(`[SERVICE] Iniciando exclusão da Vector Store ${id}...`);
 
@@ -310,6 +310,12 @@ export async function deleteVectorStore(id: string): Promise<void> {
 
         const result = await response.json();
         console.log('[SERVICE] Resultado da exclusão:', result);
+
+        // Retorna dados sobre os arquivos que foram excluídos
+        return {
+            success: true,
+            filesDeleted: result.files?.deleted || 0
+        };
     } catch (error) {
         console.error('[SERVICE] Error deleting vector store:', error);
         throw error;
@@ -473,8 +479,10 @@ export const uploadFileToVectorStore = async (vectorStoreId: string, file: File)
 export async function deleteFileFromVectorStore(
     vectorStoreId: string,
     fileId: string
-): Promise<boolean> {
+): Promise<{ success: boolean, fileDeleted: boolean }> {
     try {
+        console.log(`[SERVICE] Excluindo arquivo ${fileId} da vector store ${vectorStoreId}`);
+
         const response = await fetch(`${API_BASE_URL}/vector-stores/${vectorStoreId}/files/${fileId}`, {
             method: 'DELETE',
             headers: {
@@ -487,9 +495,16 @@ export async function deleteFileFromVectorStore(
             throw new Error(errorData.error || `Error: ${response.status}`);
         }
 
-        return true;
+        const result = await response.json();
+        console.log('[SERVICE] Resultado da exclusão do arquivo:', result);
+
+        // Retorna o status de exclusão do arquivo do storage também
+        return {
+            success: true,
+            fileDeleted: result.file_storage_deleted === true
+        };
     } catch (error) {
-        console.error('Error deleting file from vector store:', error);
+        console.error('[SERVICE] Error deleting file from vector store:', error);
         throw error;
     }
 }

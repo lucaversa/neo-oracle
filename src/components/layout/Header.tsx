@@ -244,13 +244,7 @@ export default function Header({ toggleSidebar, onLogout, userName }: HeaderProp
                                     }}>
                                         {userName || 'Usuário'}
                                     </p>
-                                    <p style={{
-                                        fontSize: '12px',
-                                        color: 'var(--text-tertiary)',
-                                        marginTop: '4px'
-                                    }}>
-                                        {userName ? `${userName}@email.com` : 'user@email.com'}
-                                    </p>
+
                                 </div>
 
                                 <div style={{ padding: '8px 0' }}>

@@ -187,6 +187,21 @@ export default function ChatInput({
 
     const inputDisabled = disabled || isSending || isThinking;
 
+    // Melhorar o feedback visual quando o chat estiver desabilitado
+    const getInputBackgroundColor = () => {
+        if (disabled && sessionLimitReached) {
+            return isDarkMode
+                ? 'rgba(55, 65, 81, 0.2)' // Mais escuro no dark mode
+                : 'rgba(243, 244, 246, 0.8)'; // Mais claro no light mode
+        }
+        return isDarkMode
+            ? 'rgba(55, 65, 81, 0.3)'
+            : 'rgba(249, 250, 251, 0.8)';
+    };
+
+    // Verificar se o limitador é por limite de sessão
+    const sessionLimitReached = disabled && placeholder?.includes("Limite de mensagens atingido");
+
     return (
         <div style={{
             borderTop: '1px solid var(--border-color)',
@@ -386,11 +401,11 @@ export default function ChatInput({
                                 style={{
                                     width: '100%',
                                     padding: '16px 60px 16px 20px',
-                                    backgroundColor: isDarkMode
-                                        ? 'rgba(55, 65, 81, 0.3)'
-                                        : 'rgba(249, 250, 251, 0.8)',
+                                    backgroundColor: getInputBackgroundColor(),
                                     borderRadius: '20px',
-                                    border: '1px solid var(--border-color)',
+                                    border: sessionLimitReached
+                                        ? '1px solid var(--error-color)' // Borda vermelha para limite atingido
+                                        : '1px solid var(--border-color)',
                                     outline: 'none',
                                     resize: 'none',
                                     minHeight: '60px',
@@ -401,8 +416,10 @@ export default function ChatInput({
                                     color: 'var(--text-primary)',
                                     boxShadow: isDarkMode
                                         ? 'none'
-                                        : '0 2px 6px rgba(0, 0, 0, 0.05)',
-                                    opacity: inputDisabled ? 0.6 : 1,
+                                        : sessionLimitReached
+                                            ? '0 2px 6px rgba(239, 68, 68, 0.15)' // Sombra vermelha para limite atingido
+                                            : '0 2px 6px rgba(0, 0, 0, 0.05)',
+                                    opacity: inputDisabled ? 0.75 : 1,
                                     backdropFilter: 'blur(5px)'
                                 }}
                                 rows={1}
@@ -473,6 +490,26 @@ export default function ChatInput({
                                 </div>
                             )}
 
+                            {/* Ícone no input quando há limite de mensagens atingido */}
+                            {sessionLimitReached && (
+                                <div style={{
+                                    position: 'absolute',
+                                    left: '12px',
+                                    top: '50%',
+                                    transform: 'translateY(-50%)',
+                                    color: 'var(--error-color)',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center'
+                                }}>
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+                                        <line x1="12" y1="9" x2="12" y2="13"></line>
+                                        <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                                    </svg>
+                                </div>
+                            )}
+
                             <button
                                 type="submit"
                                 disabled={inputDisabled || !message.trim()}
@@ -484,7 +521,9 @@ export default function ChatInput({
                                     height: '40px',
                                     padding: '0',
                                     borderRadius: '50%',
-                                    background: 'linear-gradient(135deg, var(--primary-color) 0%, var(--primary-dark) 100%)', // Usa variáveis CSS
+                                    background: sessionLimitReached
+                                        ? 'linear-gradient(135deg, var(--error-color) 0%, rgb(185, 28, 28) 100%)'  // Vermelho para limite atingido
+                                        : 'linear-gradient(135deg, var(--primary-color) 0%, var(--primary-dark) 100%)', // Padrão
                                     color: 'white',
                                     border: 'none',
                                     cursor: (inputDisabled || !message.trim()) ? 'not-allowed' : 'pointer',
@@ -496,7 +535,9 @@ export default function ChatInput({
                                     transform: (inputDisabled || !message.trim())
                                         ? 'translateY(-50%) scale(0.95)'
                                         : 'translateY(-50%) scale(1)',
-                                    boxShadow: '0 4px 12px rgba(8, 145, 178, 0.3)' // Sombra turquesa
+                                    boxShadow: sessionLimitReached
+                                        ? '0 4px 12px rgba(239, 68, 68, 0.3)' // Sombra vermelha
+                                        : '0 4px 12px rgba(8, 145, 178, 0.3)' // Sombra padrão turquesa
                                 }}
                             >
                                 {isSending ? (
@@ -513,6 +554,10 @@ export default function ChatInput({
                                         <circle style={{ opacity: 0.25 }} cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                                         <path style={{ opacity: 0.75 }} fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                                     </svg>
+                                ) : sessionLimitReached ? (
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <path d="M12 5v14M5 12h14" />
+                                    </svg>
                                 ) : (
                                     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                         <line x1="22" y1="2" x2="11" y2="13"></line>
@@ -524,21 +569,38 @@ export default function ChatInput({
                     </div>
                 </div>
 
-                {/* Dicas de uso */}
+                {/* Dicas de uso ou mensagem de limite atingido */}
                 <div style={{
                     display: 'flex',
-                    justifyContent: 'space-between',
+                    justifyContent: sessionLimitReached ? 'center' : 'space-between',
                     fontSize: '12px',
-                    color: 'var(--text-tertiary)',
+                    color: sessionLimitReached ? 'var(--error-color)' : 'var(--text-tertiary)',
                     marginTop: '8px',
-                    padding: '0 8px'
+                    padding: '0 8px',
+                    fontWeight: sessionLimitReached ? '500' : 'normal'
                 }}>
-                    <div>
-                        Digite <span style={{ fontFamily: 'monospace', backgroundColor: isDarkMode ? 'rgba(55, 65, 81, 0.5)' : 'rgba(243, 244, 246, 0.7)', padding: '2px 4px', borderRadius: '4px' }}>/</span> para comandos rápidos
-                    </div>
-                    <div>
-                        <span style={{ opacity: 0.8 }}>Shift + Enter</span> para nova linha
-                    </div>
+                    {sessionLimitReached ? (
+                        <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px'
+                        }}>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <line x1="18" y1="6" x2="6" y2="18"></line>
+                                <line x1="6" y1="6" x2="18" y2="18"></line>
+                            </svg>
+                            Limite de mensagens atingido. Por favor, inicie uma nova conversa.
+                        </div>
+                    ) : (
+                        <>
+                            <div>
+                                Digite <span style={{ fontFamily: 'monospace', backgroundColor: isDarkMode ? 'rgba(55, 65, 81, 0.5)' : 'rgba(243, 244, 246, 0.7)', padding: '2px 4px', borderRadius: '4px' }}>/</span> para comandos rápidos
+                            </div>
+                            <div>
+                                <span style={{ opacity: 0.8 }}>Shift + Enter</span> para nova linha
+                            </div>
+                        </>
+                    )}
                 </div>
             </form>
         </div>

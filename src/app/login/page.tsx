@@ -1,3 +1,10 @@
+'use client'
+
+import { useState, FormEvent, useEffect, Suspense, useRef } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { useAuth } from '@/context/AuthContext';
+import { useTheme } from '@/context/ThemeContext';
+
 // Interface para Estrela
 interface Star {
     x: number;
@@ -9,21 +16,6 @@ interface Star {
     angle: number;
     pulse: number;
     pulseSpeed: number;
-}'use client'
-
-import { useState, FormEvent, useEffect, Suspense, useRef } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
-import { useAuth } from '@/context/AuthContext';
-import { useTheme } from '@/context/ThemeContext';
-
-// Interface para as propriedades do componente DynamicBackground
-interface DynamicBackgroundProps {
-    isDarkMode: boolean;
-}
-
-// Interface para as propriedades do componente DynamicBackground
-interface DynamicBackgroundProps {
-    isDarkMode: boolean;
 }
 
 // Interface para as propriedades do componente DynamicBackground
@@ -55,7 +47,6 @@ const DynamicBackground: React.FC<DynamicBackgroundProps> = ({ isDarkMode }) => 
 
         // Configuração das estrelas
         const stars: Star[] = [];
-        const numberOfStars = 200; // Mais estrelas, porém menores
 
         // Cores diferenciadas por modo
         const colors = isDarkMode
@@ -284,6 +275,24 @@ function LoginContent() {
 
     // Estado do tema anterior para detectar mudanças
     const [prevTheme, setPrevTheme] = useState<boolean>(isDarkMode);
+    // Estado para controlar se é mobile ou não
+    const [isMobile, setIsMobile] = useState<boolean>(false);
+
+    // Detectar se é dispositivo móvel
+    useEffect(() => {
+        const checkMobile = () => {
+            setIsMobile(window.innerWidth < 768);
+        };
+
+        // Verificar inicialmente
+        checkMobile();
+
+        // Adicionar event listener para recheck em resize
+        window.addEventListener('resize', checkMobile);
+
+        // Cleanup
+        return () => window.removeEventListener('resize', checkMobile);
+    }, []);
 
     // Efeito para lidar com mudanças de tema
     useEffect(() => {
@@ -396,19 +405,20 @@ function LoginContent() {
             display: 'flex',
             justifyContent: 'center',
             alignItems: 'center',
-            padding: '20px',
+            padding: isMobile ? '10px' : '20px',
             position: 'relative',
             overflow: 'hidden'
         }}>
             {/* Fundo dinâmico animado - com key para forçar recriação ao mudar tema */}
             <DynamicBackground isDarkMode={isDarkMode} key={isDarkMode ? "dark" : "light"} />
 
-            {/* Toggle Theme Button */}
+            {/* Toggle Theme Button - ajustado para mobile */}
             <button
                 onClick={toggleDarkMode}
                 style={{
                     position: 'absolute',
-                    top: '20px',
+                    top: isMobile ? 'auto' : '20px',
+                    bottom: isMobile ? '20px' : 'auto',
                     right: '20px',
                     backgroundColor: isDarkMode ? 'rgba(30, 30, 50, 0.6)' : 'rgba(255, 255, 255, 0.6)',
                     border: 'none',
@@ -417,17 +427,19 @@ function LoginContent() {
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    padding: '10px',
+                    padding: isMobile ? '8px' : '10px',
                     borderRadius: '50%',
                     backdropFilter: 'blur(4px)',
                     zIndex: 10,
                     boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
-                    transition: 'all 0.3s'
+                    transition: 'all 0.3s',
+                    width: isMobile ? '36px' : '42px',
+                    height: isMobile ? '36px' : '42px'
                 }}
                 aria-label={isDarkMode ? "Mudar para modo claro" : "Mudar para modo escuro"}
             >
                 {isDarkMode ? (
-                    <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <svg xmlns="http://www.w3.org/2000/svg" width={isMobile ? "18" : "22"} height={isMobile ? "18" : "22"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <circle cx="12" cy="12" r="5"></circle>
                         <line x1="12" y1="1" x2="12" y2="3"></line>
                         <line x1="12" y1="21" x2="12" y2="23"></line>
@@ -439,7 +451,7 @@ function LoginContent() {
                         <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
                     </svg>
                 ) : (
-                    <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <svg xmlns="http://www.w3.org/2000/svg" width={isMobile ? "18" : "22"} height={isMobile ? "18" : "22"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
                     </svg>
                 )}
@@ -447,11 +459,11 @@ function LoginContent() {
 
             <div style={{
                 width: '100%',
-                maxWidth: '430px',
+                maxWidth: isMobile ? '350px' : '430px',
                 backgroundColor: isDarkMode
-                    ? '#171a29' // Cor sólida para garantir consistência no modo escuro 
-                    : '#ffffff', // Branco puro no modo claro
-                borderRadius: '20px',
+                    ? '#171a29'
+                    : '#ffffff',
+                borderRadius: isMobile ? '16px' : '20px',
                 overflow: 'hidden',
                 transition: 'all 0.3s',
                 boxShadow: isDarkMode
@@ -464,8 +476,8 @@ function LoginContent() {
             }}>
                 {/* Cabeçalho */}
                 <div style={{
-                    padding: '40px 30px 30px',
-                    background: 'linear-gradient(135deg, #0E9BBD 0%, #0B8099 100%)', // Cor turquesa mais próxima à imagem
+                    padding: isMobile ? '30px 20px 20px' : '40px 30px 30px',
+                    background: 'linear-gradient(135deg, #0E9BBD 0%, #0B8099 100%)',
                     color: 'white',
                     textAlign: 'center',
                     position: 'relative',
@@ -498,9 +510,9 @@ function LoginContent() {
                         zIndex: 2
                     }}>
                         <div style={{
-                            width: '100px',
-                            height: '100px',
-                            margin: '0 auto 20px',
+                            width: isMobile ? '80px' : '100px',
+                            height: isMobile ? '80px' : '100px',
+                            margin: '0 auto 16px',
                             backgroundColor: 'rgba(255, 255, 255, 0.18)',
                             borderRadius: '50%',
                             display: 'flex',
@@ -512,8 +524,8 @@ function LoginContent() {
                         }}>
                             <svg
                                 xmlns="http://www.w3.org/2000/svg"
-                                width="50"
-                                height="50"
+                                width={isMobile ? "40" : "50"}
+                                height={isMobile ? "40" : "50"}
                                 viewBox="0 0 24 24"
                                 fill="none"
                                 stroke="currentColor"
@@ -537,24 +549,24 @@ function LoginContent() {
                             </svg>
                         </div>
                         <h1 style={{
-                            fontSize: '28px',
+                            fontSize: isMobile ? '24px' : '28px',
                             fontWeight: 'bold',
-                            marginBottom: '8px',
+                            marginBottom: isMobile ? '6px' : '8px',
                             letterSpacing: '-0.5px'
                         }}>
                             Oráculo
                         </h1>
                         <p style={{
-                            fontSize: '16px',
+                            fontSize: isMobile ? '14px' : '16px',
                             opacity: '0.9',
-                            marginBottom: '8px'
+                            marginBottom: isMobile ? '6px' : '8px'
                         }}>
                             O assistente pessoal da sua empresa
                         </p>
                         <div style={{
                             width: '60px',
                             height: '4px',
-                            margin: '12px auto 0',
+                            margin: '10px auto 0',
                             background: 'rgba(255, 255, 255, 0.3)',
                             borderRadius: '2px'
                         }}></div>
@@ -563,25 +575,25 @@ function LoginContent() {
 
                 {/* Formulário */}
                 <div style={{
-                    padding: '30px',
+                    padding: isMobile ? '20px' : '30px',
                     transition: 'background-color 0.3s'
                 }}>
                     {successMessage && (
                         <div style={{
-                            padding: '14px 18px',
+                            padding: isMobile ? '12px 15px' : '14px 18px',
                             backgroundColor: isDarkMode ? 'rgba(16, 185, 129, 0.15)' : 'rgba(16, 185, 129, 0.1)',
                             borderLeft: '4px solid var(--success-color)',
-                            borderRadius: '12px',
-                            marginBottom: '20px',
+                            borderRadius: isMobile ? '10px' : '12px',
+                            marginBottom: isMobile ? '16px' : '20px',
                             color: 'var(--success-color)',
-                            fontSize: '14px',
+                            fontSize: isMobile ? '13px' : '14px',
                             animation: 'fadeIn 0.3s ease-out',
                             display: 'flex',
                             alignItems: 'center',
-                            gap: '10px',
+                            gap: isMobile ? '8px' : '10px',
                             backdropFilter: 'blur(4px)'
                         }}>
-                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <svg xmlns="http://www.w3.org/2000/svg" width={isMobile ? "18" : "20"} height={isMobile ? "18" : "20"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                 <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
                                 <polyline points="22 4 12 14.01 9 11.01"></polyline>
                             </svg>
@@ -591,20 +603,20 @@ function LoginContent() {
 
                     {error && (
                         <div style={{
-                            padding: '14px 18px',
+                            padding: isMobile ? '12px 15px' : '14px 18px',
                             backgroundColor: isDarkMode ? 'rgba(239, 68, 68, 0.15)' : 'rgba(239, 68, 68, 0.1)',
                             borderLeft: '4px solid var(--error-color)',
-                            borderRadius: '12px',
-                            marginBottom: '20px',
+                            borderRadius: isMobile ? '10px' : '12px',
+                            marginBottom: isMobile ? '16px' : '20px',
                             color: 'var(--error-color)',
-                            fontSize: '14px',
+                            fontSize: isMobile ? '13px' : '14px',
                             animation: 'fadeIn 0.3s ease-out',
                             display: 'flex',
                             alignItems: 'center',
-                            gap: '10px',
+                            gap: isMobile ? '8px' : '10px',
                             backdropFilter: 'blur(4px)'
                         }}>
-                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <svg xmlns="http://www.w3.org/2000/svg" width={isMobile ? "18" : "20"} height={isMobile ? "18" : "20"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                 <circle cx="12" cy="12" r="10"></circle>
                                 <line x1="12" y1="8" x2="12" y2="12"></line>
                                 <line x1="12" y1="16" x2="12.01" y2="16"></line>
@@ -614,13 +626,13 @@ function LoginContent() {
                     )}
 
                     <form onSubmit={handleLogin}>
-                        <div style={{ marginBottom: '24px' }}>
+                        <div style={{ marginBottom: isMobile ? '20px' : '24px' }}>
                             <label
                                 htmlFor="email"
                                 style={{
                                     display: 'block',
-                                    marginBottom: '10px',
-                                    fontSize: '15px',
+                                    marginBottom: isMobile ? '8px' : '10px',
+                                    fontSize: isMobile ? '14px' : '15px',
                                     fontWeight: '600',
                                     color: 'var(--text-primary)',
                                     transition: 'color 0.3s'
@@ -637,16 +649,17 @@ function LoginContent() {
                                     required
                                     style={{
                                         width: '100%',
-                                        padding: '16px 16px 16px 52px',
+                                        padding: isMobile ? '12px 12px 12px 40px' : '16px 16px 16px 52px',
                                         border: '1px solid var(--border-color)',
-                                        borderRadius: '14px',
-                                        fontSize: '15px',
+                                        borderRadius: isMobile ? '12px' : '14px',
+                                        fontSize: isMobile ? '14px' : '15px',
                                         outline: 'none',
                                         backgroundColor: isDarkMode ? 'rgba(30, 30, 50, 0.3)' : 'rgba(255, 255, 255, 0.7)',
                                         color: 'var(--text-primary)',
                                         transition: 'all 0.3s',
                                         boxShadow: 'var(--shadow-sm)',
-                                        backdropFilter: 'blur(4px)'
+                                        backdropFilter: 'blur(4px)',
+                                        height: isMobile ? '44px' : 'auto'
                                     }}
                                     placeholder="seu@email.com"
                                     value={email}
@@ -654,18 +667,18 @@ function LoginContent() {
                                 />
                                 <div style={{
                                     position: 'absolute',
-                                    left: '18px',
+                                    left: isMobile ? '14px' : '18px',
                                     top: '50%',
                                     transform: 'translateY(-50%)',
-                                    width: '22px',
-                                    height: '22px',
+                                    width: isMobile ? '20px' : '22px',
+                                    height: isMobile ? '20px' : '22px',
                                     color: 'var(--text-tertiary)',
                                     display: 'flex',
                                     alignItems: 'center',
                                     justifyContent: 'center',
                                     transition: 'color 0.3s'
                                 }}>
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width={isMobile ? "18" : "20"} height={isMobile ? "18" : "20"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                         <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
                                         <polyline points="22,6 12,13 2,6"></polyline>
                                     </svg>
@@ -673,17 +686,17 @@ function LoginContent() {
                             </div>
                         </div>
 
-                        <div style={{ marginBottom: '24px' }}>
+                        <div style={{ marginBottom: isMobile ? '20px' : '24px' }}>
                             <div style={{
                                 display: 'flex',
                                 justifyContent: 'space-between',
                                 alignItems: 'center',
-                                marginBottom: '10px'
+                                marginBottom: isMobile ? '8px' : '10px'
                             }}>
                                 <label
                                     htmlFor="password"
                                     style={{
-                                        fontSize: '15px',
+                                        fontSize: isMobile ? '14px' : '15px',
                                         fontWeight: '600',
                                         color: 'var(--text-primary)',
                                         transition: 'color 0.3s'
@@ -701,16 +714,17 @@ function LoginContent() {
                                     required
                                     style={{
                                         width: '100%',
-                                        padding: '16px 16px 16px 52px',
+                                        padding: isMobile ? '12px 12px 12px 40px' : '16px 16px 16px 52px',
                                         border: '1px solid var(--border-color)',
-                                        borderRadius: '14px',
-                                        fontSize: '15px',
+                                        borderRadius: isMobile ? '12px' : '14px',
+                                        fontSize: isMobile ? '14px' : '15px',
                                         outline: 'none',
                                         backgroundColor: isDarkMode ? 'rgba(30, 30, 50, 0.3)' : 'rgba(255, 255, 255, 0.7)',
                                         color: 'var(--text-primary)',
                                         transition: 'all 0.3s',
                                         boxShadow: 'var(--shadow-sm)',
-                                        backdropFilter: 'blur(4px)'
+                                        backdropFilter: 'blur(4px)',
+                                        height: isMobile ? '44px' : 'auto'
                                     }}
                                     placeholder="••••••••"
                                     value={password}
@@ -718,18 +732,18 @@ function LoginContent() {
                                 />
                                 <div style={{
                                     position: 'absolute',
-                                    left: '18px',
+                                    left: isMobile ? '14px' : '18px',
                                     top: '50%',
                                     transform: 'translateY(-50%)',
-                                    width: '22px',
-                                    height: '22px',
+                                    width: isMobile ? '20px' : '22px',
+                                    height: isMobile ? '20px' : '22px',
                                     color: 'var(--text-tertiary)',
                                     display: 'flex',
                                     alignItems: 'center',
                                     justifyContent: 'center',
                                     transition: 'color 0.3s'
                                 }}>
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width={isMobile ? "18" : "20"} height={isMobile ? "18" : "20"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                         <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
                                         <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
                                     </svg>
@@ -745,20 +759,21 @@ function LoginContent() {
                                 justifyContent: 'center',
                                 alignItems: 'center',
                                 width: '100%',
-                                padding: '16px',
+                                padding: isMobile ? '12px' : '16px',
                                 background: 'linear-gradient(135deg, #0E9BBD 0%, #0B8099 100%)',
                                 color: 'white',
                                 border: 'none',
-                                borderRadius: '14px',
-                                fontSize: '16px',
+                                borderRadius: isMobile ? '12px' : '14px',
+                                fontSize: isMobile ? '15px' : '16px',
                                 fontWeight: '600',
                                 cursor: loading ? 'not-allowed' : 'pointer',
                                 opacity: loading ? '0.7' : '1',
-                                marginBottom: '20px',
+                                marginBottom: isMobile ? '16px' : '20px',
                                 transition: 'all 0.2s',
                                 boxShadow: '0 4px 15px rgba(14, 155, 189, 0.3)',
                                 position: 'relative',
-                                overflow: 'hidden'
+                                overflow: 'hidden',
+                                height: isMobile ? '44px' : 'auto'
                             }}
                         >
                             <div style={{
@@ -776,8 +791,8 @@ function LoginContent() {
                                 <>
                                     <svg
                                         style={{
-                                            width: '20px',
-                                            height: '20px',
+                                            width: isMobile ? '18px' : '20px',
+                                            height: isMobile ? '18px' : '20px',
                                             marginRight: '8px',
                                             animation: 'spin 1s linear infinite'
                                         }}
@@ -806,10 +821,10 @@ function LoginContent() {
                     </form>
 
                     <div style={{
-                        marginTop: '28px',
+                        marginTop: isMobile ? '20px' : '28px',
                         textAlign: 'center',
                         color: 'var(--text-tertiary)',
-                        fontSize: '14px',
+                        fontSize: isMobile ? '12px' : '14px',
                         transition: 'color 0.3s'
                     }}>
                         <p>Acesso restrito para usuários autorizados.</p>
@@ -819,27 +834,55 @@ function LoginContent() {
 
             {/* CSS para animações */}
             <style jsx global>{`
-                  @keyframes fadeIn {
-                      from { opacity: 0; transform: translateY(10px); }
-                      to { opacity: 1; transform: translateY(0); }
-                  }
-                  
-                  @keyframes spin {
-                      0% { transform: rotate(0deg); }
-                      100% { transform: rotate(360deg); }
-                  }
-                  
-                  @keyframes shimmer {
-                      0% { transform: translateX(-100%); }
-                      100% { transform: translateX(100%); }
-                  }
-                  
-                  @keyframes float {
-                      0% { transform: translateY(0px); }
-                      50% { transform: translateY(-10px); }
-                      100% { transform: translateY(0px); }
-                  }
-              `}</style>
+                @keyframes fadeIn {
+                    from { opacity: 0; transform: translateY(10px); }
+                    to { opacity: 1; transform: translateY(0); }
+                }
+                
+                @keyframes spin {
+                    0% { transform: rotate(0deg); }
+                    100% { transform: rotate(360deg); }
+                }
+                
+                @keyframes shimmer {
+                    0% { transform: translateX(-100%); }
+                    100% { transform: translateX(100%); }
+                }
+                
+                @keyframes float {
+                    0% { transform: translateY(0px); }
+                    50% { transform: translateY(-10px); }
+                    100% { transform: translateY(0px); }
+                }
+                
+                /* Base CSS variables for light/dark mode */
+                :root {
+                    --background-main: ${isDarkMode ? '#0A0E1A' : '#f8fbff'};
+                    --text-primary: ${isDarkMode ? '#ffffff' : '#333333'};
+                    --text-secondary: ${isDarkMode ? '#a0aec0' : '#666666'};
+                    --text-tertiary: ${isDarkMode ? '#718096' : '#888888'};
+                    --primary-color: #0E9BBD;
+                    --border-color: ${isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'};
+                    --success-color: ${isDarkMode ? '#10b981' : '#059669'};
+                    --error-color: ${isDarkMode ? '#ef4444' : '#dc2626'};
+                    --shadow-sm: ${isDarkMode ? 'none' : '0 1px 3px rgba(0, 0, 0, 0.08)'};
+                }
+                
+                /* Responsive adjustments */
+                @media (max-width: 768px) {
+                    html {
+                        font-size: 14px;
+                    }
+                }
+                
+                body {
+                    margin: 0;
+                    padding: 0;
+                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+                    background-color: var(--background-main);
+                    color: var(--text-primary);
+                }
+            `}</style>
         </div>
     );
 }

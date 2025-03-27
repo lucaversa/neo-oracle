@@ -66,20 +66,6 @@ export function useChat(userId?: string): UseChatReturn {
         messagesRef.current = messages;
     }, [messages]);
 
-    // Efeito para carregar o ID da vector store da sessão local
-    useEffect(() => {
-        if (sessionId) {
-            // Tentar carregar o ID da vector store do armazenamento local
-            const savedVectorStoreId = localStorage.getItem(`chat_vectorStoreId_${sessionId}`);
-            if (savedVectorStoreId) {
-                setVectorStoreId(savedVectorStoreId);
-            } else if (defaultVectorStoreId) {
-                // Se não houver um ID salvo, usar o padrão
-                setVectorStoreId(defaultVectorStoreId);
-            }
-        }
-    }, [sessionId, defaultVectorStoreId]);
-
     const getVectorStoreForQuery = useCallback(async (query: string): Promise<string[]> => {
         // If not automatic, return the selected one
         if (vectorStoreId !== 'automatic') {
@@ -135,20 +121,15 @@ export function useChat(userId?: string): UseChatReturn {
 
     // Função para selecionar vector store
     const selectVectorStore = useCallback((id: string) => {
+        console.log('Vector store selecionada:', id);
         setVectorStoreId(id);
+    }, []);
 
-        // Se temos uma sessão ativa, salvar a preferência
-        if (sessionId) {
-            localStorage.setItem(`chat_vectorStoreId_${sessionId}`, id);
-        }
-    }, [sessionId]);
-
-    // Adicionar este useEffect na parte inicial do hook useChat, junto com os outros useEffects
     useEffect(() => {
         // Função para carregar vector stores pesquisáveis
         const loadSearchableVectorStores = async () => {
             try {
-                console.log('Carregando vector stores pesquisáveis e padrão...');
+                console.log('Carregando vector stores pesquisáveis...');
                 const response = await fetch('/api/openai/search-config');
 
                 if (!response.ok) {
@@ -161,20 +142,23 @@ export function useChat(userId?: string): UseChatReturn {
                 if (data.searchableIds && Array.isArray(data.searchableIds)) {
                     console.log('Vector stores pesquisáveis carregadas:', data.searchableIds);
                     setSearchableVectorStores(data.searchableIds);
+
+                    // Se existem múltiplas vector stores, usar o modo automático
+                    if (data.searchableIds.length > 1) {
+                        console.log('Múltiplas vector stores detectadas, usando modo automático');
+                        setVectorStoreId('automatic');
+                    } else if (data.searchableIds.length === 1) {
+                        // Se há apenas uma, usar essa
+                        console.log('Apenas uma vector store disponível, usando-a diretamente:', data.searchableIds[0]);
+                        setVectorStoreId(data.searchableIds[0]);
+                    } else {
+                        // Se não há nenhuma, definir null
+                        setVectorStoreId(null);
+                    }
                 } else {
                     console.log('Nenhuma vector store pesquisável encontrada');
                     setSearchableVectorStores([]);
-                }
-
-                // Verificar se há uma vector store padrão
-                if (data.defaultId) {
-                    console.log('Vector store padrão definida:', data.defaultId);
-                    setDefaultVectorStoreId(data.defaultId);
-
-                    // Se não houver uma vector store selecionada, usar a padrão
-                    if (!vectorStoreId) {
-                        setVectorStoreId(data.defaultId);
-                    }
+                    setVectorStoreId(null);
                 }
             } catch (error) {
                 console.error('Erro ao carregar vector stores pesquisáveis:', error);
@@ -186,7 +170,7 @@ export function useChat(userId?: string): UseChatReturn {
         if (userId) {
             loadSearchableVectorStores();
         }
-    }, [userId, vectorStoreId]); // Recarregar quando mudar de usuário
+    }, [userId]); // Recarregar apenas quando mudar de usuário
 
     // Função para resetar o estado de processamento manualmente
     const resetProcessingState = useCallback(() => {
@@ -699,9 +683,15 @@ export function useChat(userId?: string): UseChatReturn {
             setMessages([]);
             setStreamingContent('');
 
-            // Usar a vector store padrão
-            if (defaultVectorStoreId) {
-                setVectorStoreId(defaultVectorStoreId);
+            if (searchableVectorStores.length > 1) {
+                // Se há mais de uma, usar o modo automático
+                setVectorStoreId('automatic');
+            } else if (searchableVectorStores.length === 1) {
+                // Se há apenas uma, usar essa
+                setVectorStoreId(searchableVectorStores[0]);
+            } else {
+                // Se não há nenhuma, definir null
+                setVectorStoreId(null);
             }
 
             // Atualizar as informações da sessão com título simplificado
@@ -778,11 +768,15 @@ export function useChat(userId?: string): UseChatReturn {
             setError(null);
 
             // Carregar o vector store ID para esta sessão
-            const savedVectorStoreId = localStorage.getItem(`chat_vectorStoreId_${trimmedNewSessionId}`);
-            if (savedVectorStoreId) {
-                setVectorStoreId(savedVectorStoreId);
-            } else if (defaultVectorStoreId) {
-                setVectorStoreId(defaultVectorStoreId);
+            if (searchableVectorStores.length > 1) {
+                // Se há mais de uma, usar o modo automático
+                setVectorStoreId('automatic');
+            } else if (searchableVectorStores.length === 1) {
+                // Se há apenas uma, usar essa
+                setVectorStoreId(searchableVectorStores[0]);
+            } else {
+                // Se não há nenhuma, definir null
+                setVectorStoreId(null);
             }
 
             // Carregar mensagens para a nova sessão

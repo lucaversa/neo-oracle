@@ -11,9 +11,6 @@ interface VectorStoreSelectorProps {
     disabled?: boolean;
 }
 
-// Chave para armazenar a escolha no localStorage
-const CACHE_KEY = 'oracle_selected_vector_store';
-
 export default function VectorStoreSelector({
     selectedId,
     onSelect,
@@ -55,41 +52,31 @@ export default function VectorStoreSelector({
 
             const stores = await getSearchableVectorStores();
 
+            // Ordenar - vector stores padrão primeiro
+            const sortedStores = [...stores].sort((a, b) => {
+                // Primeiro critério: is_default (true primeiro)
+                if (a.is_default && !b.is_default) return -1;
+                if (!a.is_default && b.is_default) return 1;
+                // Segundo critério: data de criação (mais recente primeiro)
+                return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+            });
+
             // Verificar se podemos mostrar a opção Automático (mais de uma vector store)
-            setShowAutomaticOption(stores.length > 1);
+            const hasMultipleStores = sortedStores.length > 1;
+            setShowAutomaticOption(hasMultipleStores);
 
-            // Guardar a lista original de vector stores
-            setVectorStores(stores);
+            // Guardar a lista original de vector stores, já ordenada
+            setVectorStores(sortedStores);
 
-            // Identificar o default store
-            const defaultStore = stores.find(store => store.is_default);
-
-            // Se não temos um ID selecionado, verificamos o cache
-            if (!selectedId) {
-                const cachedId = localStorage.getItem(CACHE_KEY);
-
-                if (cachedId) {
-                    if (cachedId === 'automatic' && stores.length > 1) {
-                        onSelect('automatic');
-                    } else {
-                        const validStore = stores.find(store => store.vector_store_id === cachedId);
-                        if (validStore) {
-                            setSelectedStore(validStore);
-                            onSelect(cachedId);
-                        } else if (defaultStore) {
-                            setSelectedStore(defaultStore);
-                            onSelect(defaultStore.vector_store_id);
-                        } else if (stores.length > 0) {
-                            setSelectedStore(stores[0]);
-                            onSelect(stores[0].vector_store_id);
-                        }
-                    }
-                } else if (defaultStore) {
-                    setSelectedStore(defaultStore);
-                    onSelect(defaultStore.vector_store_id);
-                } else if (stores.length > 0) {
-                    setSelectedStore(stores[0]);
-                    onSelect(stores[0].vector_store_id);
+            // Se não temos um ID selecionado ou estamos mudando para uma nova seleção
+            if (!selectedId || (hasMultipleStores && selectedId !== 'automatic')) {
+                if (hasMultipleStores) {
+                    // Se temos múltiplas stores, selecionar automático
+                    onSelect('automatic');
+                } else if (sortedStores.length === 1) {
+                    // Se temos apenas uma store, selecionar ela
+                    setSelectedStore(sortedStores[0]);
+                    onSelect(sortedStores[0].vector_store_id);
                 }
             }
         } catch (err) {
@@ -131,18 +118,12 @@ export default function VectorStoreSelector({
             // Caso selecione a opção automática
             setSelectedStore(null);
             onSelect('automatic');
-
-            // Salvar no cache
-            localStorage.setItem(CACHE_KEY, 'automatic');
         } else {
             // Caso selecione uma vector store específica
             const store = vectorStores.find(vs => vs.vector_store_id === vectorStoreId);
             if (store) {
                 setSelectedStore(store);
                 onSelect(vectorStoreId);
-
-                // Salvar no cache
-                localStorage.setItem(CACHE_KEY, vectorStoreId);
             }
         }
 

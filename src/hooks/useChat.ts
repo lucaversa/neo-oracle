@@ -38,7 +38,6 @@ export function useChat(userId?: string): UseChatReturn {
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [sessionId, setSessionId] = useState<string>('');
     const [vectorStoreId, setVectorStoreId] = useState<string | null>(null); // Novo estado para vector store selecionada
-    const [defaultVectorStoreId, setDefaultVectorStoreId] = useState<string | null>(null); // Estado para vector store padrão
     const [activeSessions, setActiveSessions] = useState<string[]>([]);
     const [sessionInfos, setSessionInfos] = useState<Map<string, SessionInfo>>(new Map());
     const [loading, setLoading] = useState<boolean>(true);

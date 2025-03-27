@@ -1,5 +1,5 @@
 // src/components/chat/ChatBubble.tsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { ChatMessage } from '@/types/chat';
 import { useTheme } from '@/context/ThemeContext';
 
@@ -13,6 +13,7 @@ interface ChatBubbleProps {
 export default function ChatBubble({
     message,
     userName = '',
+    streamingContent,
     isStreaming = false,
 }: ChatBubbleProps) {
     const isUser = message.type === 'human';
@@ -22,17 +23,27 @@ export default function ChatBubble({
     const [isVisible, setIsVisible] = useState(true);
     const [isHovering, setIsHovering] = useState(false);
 
+    // Ref para rastrear se a animação já foi executada
+    const hasAnimatedRef = useRef(false);
     // Controlador de animação
     const [isAnimated, setIsAnimated] = useState(false);
 
     // Inicia a animação após um breve atraso para garantir renderização suave
+    // Modificado para usar o ref e evitar reanimar quando já animado
     useEffect(() => {
         // Primeiro garante que a mensagem está visível
         setIsVisible(true);
 
+        // Se já foi animado, mantenha o estado
+        if (hasAnimatedRef.current) {
+            setIsAnimated(true);
+            return;
+        }
+
         // Pequeno atraso antes de iniciar a animação
         const animationDelay = setTimeout(() => {
             setIsAnimated(true);
+            hasAnimatedRef.current = true; // Marque que já foi animado
         }, 50);
 
         return () => clearTimeout(animationDelay);
@@ -42,11 +53,16 @@ export default function ChatBubble({
     useEffect(() => {
         if (isStreaming) {
             setIsVisible(true);
+            // Se está em streaming e visível, garantir que a animação está ativa
+            if (!isAnimated) {
+                setIsAnimated(true);
+                hasAnimatedRef.current = true;
+            }
         }
-    }, [isStreaming]);
+    }, [isStreaming, isAnimated]);
 
     // Display content
-    const displayContent = message.content;
+    const displayContent = isStreaming && streamingContent ? streamingContent : message.content;
 
     // Função para copiar
     const copyToClipboard = () => {
@@ -131,6 +147,26 @@ export default function ChatBubble({
         opacity: 1
     } as React.CSSProperties;
 
+    // Estilo para o indicador de digitação moderno
+    const typingIndicatorStyle = {
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: '4px',
+        padding: '0 5px'
+    };
+
+    // Estilo para cada bolha do indicador
+    const bubbleIndicatorStyle = (index: number) => ({
+        width: '8px',
+        height: '8px',
+        borderRadius: '50%',
+        backgroundColor: 'currentColor',
+        opacity: 0.5,
+        animation: `typingBubble 1.4s infinite ease-in-out both`,
+        animationDelay: `${index * 0.16}s`
+    });
+
     return (
         <div style={containerStyle}>
             {/* Avatar - aparece à esquerda para mensagens do AI */}
@@ -177,17 +213,28 @@ export default function ChatBubble({
                         fontSize: '15px',
                         lineHeight: '1.5'
                     }}>
-                        {displayContent}
-                        {isStreaming && !isUser && (
-                            <span className="typing-cursor" style={{
-                                display: 'inline-block',
-                                width: '2px',
-                                height: '16px',
-                                backgroundColor: 'currentColor',
-                                marginLeft: '4px',
-                                verticalAlign: 'middle',
-                                animation: 'blinkCursor 0.8s step-start infinite'
-                            }}></span>
+                        {/* Se está em streaming e não há conteúdo ainda, mostrar o indicador de digitação */}
+                        {isStreaming && !displayContent ? (
+                            <div style={typingIndicatorStyle}>
+                                <div style={bubbleIndicatorStyle(0)}></div>
+                                <div style={bubbleIndicatorStyle(1)}></div>
+                                <div style={bubbleIndicatorStyle(2)}></div>
+                            </div>
+                        ) : (
+                            <>
+                                {displayContent}
+                                {isStreaming && !isUser && displayContent && (
+                                    <span className="typing-cursor" style={{
+                                        display: 'inline-block',
+                                        width: '2px',
+                                        height: '16px',
+                                        backgroundColor: 'currentColor',
+                                        marginLeft: '4px',
+                                        verticalAlign: 'middle',
+                                        animation: 'blinkCursor 0.8s step-start infinite'
+                                    }}></span>
+                                )}
+                            </>
                         )}
                     </div>
                 </div>
@@ -240,7 +287,7 @@ export default function ChatBubble({
     );
 }
 
-// Adiciona os keyframes para o cursor
+// Adiciona os keyframes para o cursor e animações das bolhas
 if (typeof document !== 'undefined') {
     const style = document.createElement('style');
     style.textContent = `
@@ -252,6 +299,17 @@ if (typeof document !== 'undefined') {
         @keyframes fadeIn {
             from { opacity: 0; }
             to { opacity: 1; }
+        }
+        
+        @keyframes typingBubble {
+            0%, 80%, 100% { 
+                transform: scale(0.6);
+                opacity: 0.5;
+            }
+            40% { 
+                transform: scale(1);
+                opacity: 1;
+            }
         }
     `;
     document.head.appendChild(style);

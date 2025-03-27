@@ -9,7 +9,7 @@ import ChatInput from '@/components/chat/ChatInput';
 import Header from '@/components/layout/Header';
 import Sidebar from '@/components/layout/Sidebar';
 import WelcomeScreen from '@/components/chat/WelcomeScreen';
-import ThinkingIndicator from '@/components/chat/ThinkingIndicator';
+// import ThinkingIndicator from '@/components/chat/ThinkingIndicator';
 import MessageLimitOverlay from '@/components/chat/MessageLimitOverlay';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -633,23 +633,23 @@ export default function ChatPage() {
                                             {/* Renderizar mensagens existentes */}
                                             {messages.map((message, index) => (
                                                 <ChatBubble
-                                                    key={`${sessionId}-${index}-${message.type}`}
+                                                    key={`msg-${sessionId}-${index}-${message.type}`}
                                                     message={message}
                                                     userName={userName}
                                                     // Streaming apenas para a última mensagem do AI, se estiver em processamento
                                                     isStreaming={isProcessing && index === messages.length - 1 && message.type === 'ai'}
-                                                    streamingContent={streamingContent}
+                                                    streamingContent={isProcessing && index === messages.length - 1 && message.type === 'ai' ? streamingContent : undefined}
                                                 />
                                             ))}
 
                                             {/* Adicionar mensagem de streaming quando necessário - quando usuário enviou mensagem e estamos aguardando resposta */}
                                             {isProcessing && messages.length > 0 && messages[messages.length - 1].type === 'human' && (
                                                 <ChatBubble
-                                                    key={`${sessionId}-streaming-${Date.now()}`} // Chave única para evitar problemas de cache
+                                                    key={`stream-${sessionId}-${messages.length}`}
                                                     message={{ type: 'ai', content: '' }}
                                                     userName={userName}
                                                     isStreaming={true}
-                                                    streamingContent={streamingContent || 'Oráculo está pensando...'}
+                                                    streamingContent={''}
                                                 />
                                             )}
                                         </>
@@ -660,25 +660,9 @@ export default function ChatPage() {
                     )}
                 </div>
 
-                {/* Footer: ThinkingIndicator + ChatInput */}
+                {/* Footer: ChatInput somente */}
                 {!isWelcomeScreenActive && (
                     <div style={{ width: '100%', position: 'relative' }}>
-                        {/* Indicador "Oráculo está pensando" centralizado acima do ChatInput */}
-                        {isProcessing && !sessionLimitReached && (
-                            <div style={{
-                                width: '100%',
-                                display: 'flex',
-                                justifyContent: 'center',
-                                padding: '0 16px',
-                                marginBottom: '12px'
-                            }}>
-                                <ThinkingIndicator
-                                    variant="pulse"
-                                    customText={streamingContent ? "Oráculo está respondendo..." : "Oráculo está pensando..."}
-                                />
-                            </div>
-                        )}
-
                         {/* Overlay de limite de mensagens */}
                         {sessionLimitReached && !isCreatingNewSession ? (
                             <MessageLimitOverlay onNewSession={handleNewSession} />
@@ -692,7 +676,7 @@ export default function ChatPage() {
                                         ? "Criando nova conversa..."
                                         : sessionLimitReached
                                             ? "Limite de mensagens atingido. Crie uma nova conversa."
-                                            : "O que você quer saber sobre sua empresa?"
+                                            : "O que você quer saber?"
                                 }
                                 // Novas props para o seletor de vector store
                                 onSelectVectorStore={handleSelectVectorStore}

@@ -1,6 +1,7 @@
 import { useState, FormEvent, KeyboardEvent, useRef, useEffect } from 'react';
 import { useTheme } from '@/context/ThemeContext';
 import VectorStoreSelector from './VectorStoreSelector';
+import { getSearchableVectorStores } from '@/services/vectorStoreService';
 
 // Interface para os comandos rápidos
 interface QuickCommand {
@@ -16,6 +17,7 @@ interface ChatInputProps {
     placeholder?: string;
     onSelectVectorStore?: (vectorStoreId: string) => void;  // Prop para selecionar base de conhecimento
     selectedVectorStoreId?: string | null;                 // Prop para o ID selecionado
+    vectorStoresCount?: number;                           // Nova prop para contar vector stores disponíveis
 }
 
 export default function ChatInput({
@@ -24,7 +26,8 @@ export default function ChatInput({
     isThinking = false,
     placeholder = "O que você quer saber?",
     onSelectVectorStore,
-    selectedVectorStoreId
+    selectedVectorStoreId,
+    vectorStoresCount = 0
 }: ChatInputProps) {
     const [message, setMessage] = useState('');
     const [isSending, setIsSending] = useState(false);
@@ -35,6 +38,7 @@ export default function ChatInput({
     const commandsRef = useRef<HTMLDivElement>(null);
     const [showKnowledgeTooltip, setShowKnowledgeTooltip] = useState(false);
     const [isMobile, setIsMobile] = useState(false);
+    const [actualVectorStoresCount, setActualVectorStoresCount] = useState(vectorStoresCount);
 
     // Detectar se é mobile
     useEffect(() => {
@@ -51,6 +55,25 @@ export default function ChatInput({
         // Limpar o listener
         return () => window.removeEventListener('resize', checkIfMobile);
     }, []);
+
+    // Efeito para buscar e atualizar a contagem de vector stores
+    useEffect(() => {
+        const fetchVectorStoresCount = async () => {
+            try {
+                const stores = await getSearchableVectorStores();
+                setActualVectorStoresCount(stores.length);
+            } catch (error) {
+                console.error("Erro ao buscar vector stores:", error);
+            }
+        };
+
+        fetchVectorStoresCount();
+
+        // Atualizar a contagem quando a prop mudar também
+        if (vectorStoresCount > 0) {
+            setActualVectorStoresCount(vectorStoresCount);
+        }
+    }, [vectorStoresCount]);
 
     // Lista de comandos rápidos
     const quickCommands: QuickCommand[] = [
@@ -202,6 +225,9 @@ export default function ChatInput({
     // Verificar se o limitador é por limite de sessão
     const sessionLimitReached = disabled && placeholder?.includes("Limite de mensagens atingido");
 
+    // Verifica se deve mostrar o seletor de vector store (apenas se houver mais de 1)
+    const shouldShowVectorStoreSelector = onSelectVectorStore && actualVectorStoresCount > 1;
+
     return (
         <div style={{
             borderTop: '1px solid var(--border-color)',
@@ -236,8 +262,8 @@ export default function ChatInput({
                         position: 'relative',
                         width: '100%'
                     }}>
-                        {/* Knowledge Base Selector - Implementação atualizada */}
-                        {onSelectVectorStore && (
+                        {/* Knowledge Base Selector - Só exibe quando há mais de 1 vector store */}
+                        {shouldShowVectorStoreSelector && (
                             <div style={{
                                 display: 'flex',
                                 alignItems: 'center',

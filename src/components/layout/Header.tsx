@@ -40,6 +40,11 @@ export default function Header({ toggleSidebar, onLogout, userName }: HeaderProp
         router.push('/admin/vector-stores');
     };
 
+    // Nova função para navegar para a página de gerenciamento de usuários
+    const handleNavigateToUsers = () => {
+        router.push('/admin/users');
+    };
+
     return (
         <header style={{
             backgroundColor: 'var(--background-elevated)',
@@ -111,7 +116,7 @@ export default function Header({ toggleSidebar, onLogout, userName }: HeaderProp
                     gap: '8px',
                     zIndex: 10 // Acima do título centralizado
                 }}>
-                    {/* Botão de Admin (Apenas para administradores) */}
+                    {/* Botão de Admin Vector Stores (Apenas para administradores) */}
                     {isAdmin && (
                         <button
                             onClick={handleNavigateToAdmin}
@@ -132,6 +137,33 @@ export default function Header({ toggleSidebar, onLogout, userName }: HeaderProp
                             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                 <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path>
                                 <circle cx="12" cy="12" r="3"></circle>
+                            </svg>
+                        </button>
+                    )}
+
+                    {/* Novo Botão de Admin Users (Apenas para administradores) */}
+                    {isAdmin && (
+                        <button
+                            onClick={handleNavigateToUsers}
+                            style={{
+                                padding: '10px',
+                                borderRadius: '50%',
+                                backgroundColor: 'var(--background-subtle)',
+                                color: 'var(--text-secondary)',
+                                border: 'none',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                transition: 'background-color 0.2s'
+                            }}
+                            title="Gerenciar Usuários"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path>
+                                <circle cx="9" cy="7" r="4"></circle>
+                                <path d="M22 21v-2a4 4 0 0 0-3-3.87"></path>
+                                <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
                             </svg>
                         </button>
                     )}
@@ -248,7 +280,7 @@ export default function Header({ toggleSidebar, onLogout, userName }: HeaderProp
                                 </div>
 
                                 <div style={{ padding: '8px 0' }}>
-                                    {/* Menu Item - Admin (Apenas para administradores) */}
+                                    {/* Menu Item - Vector Stores (Apenas para administradores) */}
                                     {isAdmin && (
                                         <button
                                             onClick={() => {
@@ -275,6 +307,38 @@ export default function Header({ toggleSidebar, onLogout, userName }: HeaderProp
                                                 <circle cx="12" cy="12" r="3"></circle>
                                             </svg>
                                             Gerenciar Vector Stores
+                                        </button>
+                                    )}
+
+                                    {/* Novo Menu Item - Users Admin (Apenas para administradores) */}
+                                    {isAdmin && (
+                                        <button
+                                            onClick={() => {
+                                                setUserMenuOpen(false);
+                                                handleNavigateToUsers();
+                                            }}
+                                            style={{
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '8px',
+                                                width: '100%',
+                                                textAlign: 'left',
+                                                padding: '10px 16px',
+                                                fontSize: '14px',
+                                                color: 'var(--text-primary)',
+                                                backgroundColor: 'transparent',
+                                                border: 'none',
+                                                cursor: 'pointer',
+                                                transition: 'background-color 0.2s'
+                                            }}
+                                        >
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path>
+                                                <circle cx="9" cy="7" r="4"></circle>
+                                                <path d="M22 21v-2a4 4 0 0 0-3-3.87"></path>
+                                                <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                                            </svg>
+                                            Gerenciar Usuários
                                         </button>
                                     )}
 

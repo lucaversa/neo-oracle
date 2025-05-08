@@ -13,7 +13,7 @@ const openai = new OpenAI({
 });
 
 // Define o modelo padrão a ser usado
-const DEFAULT_MODEL = "o3-mini";
+const DEFAULT_MODEL = "o4-mini";
 
 // Instruções para o chatbot - serão passadas como instructions parameter
 const INSTRUCTIONS = `

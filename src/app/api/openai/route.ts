@@ -13,7 +13,7 @@ const openai = new OpenAI({
 });
 
 // Define o modelo padrão a ser usado
-const DEFAULT_MODEL = "GPT-4o";
+const DEFAULT_MODEL = "gpt-4.1";
 
 // Instruções para o chatbot - serão passadas como instructions parameter
 const INSTRUCTIONS = `

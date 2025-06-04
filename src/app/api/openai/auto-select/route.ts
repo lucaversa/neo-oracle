@@ -90,7 +90,7 @@ export async function POST(request: NextRequest) {
 
         // Call OpenAI using the Responses API with a simpler prompt
         const response = await openai.responses.create({
-            model: "GPT-4o",
+            model: "gpt-4.1",
             input: userPrompt,
             instructions: "Você deve selecionar a base de conhecimento mais adequada para a pergunta do usuário. Responda APENAS com o NÚMERO da opção escolhida (1, 2, etc.), sem explicações ou texto adicional."
         });

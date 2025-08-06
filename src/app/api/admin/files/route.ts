@@ -82,13 +82,13 @@ export async function POST(request: NextRequest) {
         });
 
         // Verificar tipo de arquivo
-        const allowedTypes = ['application/pdf', 'text/plain', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+        const allowedTypes = ['application/pdf', 'text/plain', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/json'];
         const fileType = file.type;
 
         if (!allowedTypes.includes(fileType)) {
             return NextResponse.json({
                 error: 'Tipo de arquivo não suportado',
-                details: 'São aceitos apenas arquivos PDF, TXT, DOC ou DOCX'
+                details: 'São aceitos apenas arquivos PDF, TXT, DOC, DOCX ou JSON'
             }, { status: 400 });
         }
 

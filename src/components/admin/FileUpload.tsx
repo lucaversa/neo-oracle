@@ -2,7 +2,7 @@
 'use client'
 
 import { useState, useRef } from 'react';
-import { uploadFileToVectorStore } from '@/services/vectorStoreService';
+import { uploadFileToVectorStore, getFileDetails } from '@/services/vectorStoreService';
 
 interface FileUploadProps {
     vectorStoreId: string;
@@ -11,9 +11,17 @@ interface FileUploadProps {
 
 interface VectorStoreFile {
     id: string;
-    filename: string;
+    filename?: string;
     created_at: number;
-    bytes: number;
+    bytes?: number;
+}
+
+interface FileDetails {
+    id: string;
+    filename?: string;
+    bytes?: number;
+    created_at?: number;
+    status?: string;
 }
 
 export default function FileUpload({ vectorStoreId, onUploadSuccess }: FileUploadProps) {
@@ -26,6 +34,8 @@ export default function FileUpload({ vectorStoreId, onUploadSuccess }: FileUploa
     const [existingFiles, setExistingFiles] = useState<VectorStoreFile[]>([]);
     const [selectedFileToReplace, setSelectedFileToReplace] = useState<string>('');
     const [loadingFiles, setLoadingFiles] = useState<boolean>(false);
+    const [fileDetails, setFileDetails] = useState<Record<string, FileDetails>>({});
+    const [loadingFileDetails, setLoadingFileDetails] = useState<Record<string, boolean>>({});
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     // Manipuladores de eventos de arrastar e soltar
@@ -64,6 +74,24 @@ export default function FileUpload({ vectorStoreId, onUploadSuccess }: FileUploa
         }
     };
 
+    // Carregar detalhes de um arquivo específico
+    const loadFileDetails = async (fileId: string) => {
+        if (loadingFileDetails[fileId] || fileDetails[fileId]) return;
+
+        try {
+            setLoadingFileDetails(prev => ({ ...prev, [fileId]: true }));
+            const details = await getFileDetails(fileId);
+            
+            if (details) {
+                setFileDetails(prev => ({ ...prev, [fileId]: details }));
+            }
+        } catch (error) {
+            console.error(`Erro ao carregar detalhes do arquivo ${fileId}:`, error);
+        } finally {
+            setLoadingFileDetails(prev => ({ ...prev, [fileId]: false }));
+        }
+    };
+
     // Buscar arquivos existentes na vector store
     const fetchExistingFiles = async () => {
         setLoadingFiles(true);
@@ -76,7 +104,15 @@ export default function FileUpload({ vectorStoreId, onUploadSuccess }: FileUploa
             }
             
             const data = await response.json();
-            setExistingFiles(data.data || []);
+            const files = data.data || [];
+            setExistingFiles(files);
+            
+            // Carregar detalhes de cada arquivo
+            files.forEach((file: VectorStoreFile) => {
+                if (!fileDetails[file.id]) {
+                    loadFileDetails(file.id);
+                }
+            });
         } catch (err) {
             console.error('Erro ao buscar arquivos:', err);
             setError('Erro ao carregar lista de arquivos existentes');
@@ -110,6 +146,11 @@ export default function FileUpload({ vectorStoreId, onUploadSuccess }: FileUploa
         
         if (enabled) {
             fetchExistingFiles();
+        } else {
+            // Limpar caches quando desabilitar
+            setExistingFiles([]);
+            setFileDetails({});
+            setLoadingFileDetails({});
         }
     };
 
@@ -181,14 +222,17 @@ export default function FileUpload({ vectorStoreId, onUploadSuccess }: FileUploa
             // Se está no modo substituição, pedir confirmação e excluir arquivo primeiro
             if (replaceMode && selectedFileToReplace) {
                 const fileToReplace = existingFiles.find(f => f.id === selectedFileToReplace);
+                const fileDetailsInfo = fileToReplace ? fileDetails[fileToReplace.id] : null;
                 
                 if (!fileToReplace) {
                     throw new Error('Arquivo selecionado para substituição não encontrado');
                 }
 
+                const fileName = fileDetailsInfo?.filename || fileToReplace.filename || `Arquivo ${fileToReplace.id.substring(0, 8)}`;
+
                 // Pedir confirmação
                 const confirmDelete = window.confirm(
-                    `Tem certeza que deseja excluir o arquivo "${fileToReplace.filename}" e substitui-lo pelo novo arquivo?`
+                    `Tem certeza que deseja excluir o arquivo "${fileName}" e substitui-lo pelo novo arquivo?`
                 );
 
                 if (!confirmDelete) {
@@ -197,12 +241,12 @@ export default function FileUpload({ vectorStoreId, onUploadSuccess }: FileUploa
                 }
 
                 // Excluir arquivo existente
-                console.log('Excluindo arquivo existente:', fileToReplace.filename);
+                console.log('Excluindo arquivo existente:', fileName);
                 setUploadProgress(25);
                 
                 try {
                     await deleteFile(selectedFileToReplace);
-                    console.log(`Arquivo ${fileToReplace.filename} excluído com sucesso`);
+                    console.log(`Arquivo ${fileName} excluído com sucesso`);
                 } catch (err) {
                     throw new Error(`Erro ao excluir arquivo existente: ${err instanceof Error ? err.message : 'Erro desconhecido'}`);
                 }
@@ -237,6 +281,8 @@ export default function FileUpload({ vectorStoreId, onUploadSuccess }: FileUploa
                 setSelectedFiles([]);
                 setReplaceMode(false);
                 setSelectedFileToReplace('');
+                setFileDetails({});
+                setLoadingFileDetails({});
             }
 
             // Chamar callback de sucesso
@@ -307,24 +353,27 @@ export default function FileUpload({ vectorStoreId, onUploadSuccess }: FileUploa
             {/* Opção de substituição de arquivo */}
             <div style={{
                 marginBottom: '16px',
-                padding: '12px',
-                backgroundColor: '#f8fafc',
+                padding: '16px',
+                backgroundColor: '#1e293b',
                 borderRadius: '8px',
-                border: '1px solid #e2e8f0'
+                border: '1px solid #334155'
             }}>
                 <label style={{
                     display: 'flex',
                     alignItems: 'center',
                     gap: '8px',
                     fontSize: '14px',
-                    cursor: 'pointer'
+                    cursor: 'pointer',
+                    color: '#e2e8f0',
+                    fontFamily: 'inherit'
                 }}>
                     <input
                         type="checkbox"
                         checked={replaceMode}
                         onChange={(e) => handleReplaceModeChange(e.target.checked)}
                         style={{
-                            marginRight: '4px'
+                            marginRight: '4px',
+                            transform: 'scale(1.1)'
                         }}
                     />
                     Substituir arquivo existente
@@ -334,16 +383,17 @@ export default function FileUpload({ vectorStoreId, onUploadSuccess }: FileUploa
                     <div style={{ marginTop: '12px' }}>
                         {loadingFiles ? (
                             <div style={{ 
-                                color: '#6b7280',
+                                color: '#94a3b8',
                                 fontSize: '14px',
                                 display: 'flex',
                                 alignItems: 'center',
-                                gap: '8px'
+                                gap: '8px',
+                                fontFamily: 'inherit'
                             }}>
                                 <div style={{
                                     width: '16px',
                                     height: '16px',
-                                    border: '2px solid #e5e7eb',
+                                    border: '2px solid #334155',
                                     borderTop: '2px solid #3b82f6',
                                     borderRadius: '50%',
                                     animation: 'spin 1s linear infinite'
@@ -356,19 +406,35 @@ export default function FileUpload({ vectorStoreId, onUploadSuccess }: FileUploa
                                 onChange={(e) => setSelectedFileToReplace(e.target.value)}
                                 style={{
                                     width: '100%',
-                                    padding: '8px 12px',
-                                    border: '1px solid #d1d5db',
+                                    padding: '10px 12px',
+                                    border: '1px solid #475569',
                                     borderRadius: '6px',
                                     fontSize: '14px',
-                                    backgroundColor: 'white'
+                                    backgroundColor: '#0f172a',
+                                    color: '#e2e8f0',
+                                    fontFamily: 'inherit',
+                                    outline: 'none'
                                 }}
                             >
-                                <option value="">Selecione um arquivo para substituir...</option>
-                                {existingFiles.map(file => (
-                                    <option key={file.id} value={file.id}>
-                                        {file.filename} ({Math.round(file.bytes / 1024)}KB)
-                                    </option>
-                                ))}
+                                <option value="" style={{ backgroundColor: '#0f172a', color: '#94a3b8' }}>
+                                    Selecione um arquivo para substituir...
+                                </option>
+                                {existingFiles.map(file => {
+                                    const details = fileDetails[file.id];
+                                    const fileName = details?.filename || file.filename || `Arquivo ${file.id.substring(0, 8)}`;
+                                    const fileSize = details?.bytes || file.bytes;
+                                    const sizeText = fileSize ? `${Math.round(fileSize / 1024)}KB` : 'Tamanho desconhecido';
+                                    
+                                    return (
+                                        <option 
+                                            key={file.id} 
+                                            value={file.id}
+                                            style={{ backgroundColor: '#0f172a', color: '#e2e8f0' }}
+                                        >
+                                            {fileName} ({sizeText})
+                                        </option>
+                                    );
+                                })}
                             </select>
                         )}
                     </div>

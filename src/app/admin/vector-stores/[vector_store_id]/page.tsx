@@ -422,7 +422,7 @@ function VectorStoreDetailPage() {
                         color: 'var(--text-secondary)',
                         marginBottom: '16px'
                     }}>
-                        Adicione documentos para melhorar a pesquisa contextual. Formatos aceitos: PDF, TXT, DOC e DOCX.
+                        Adicione documentos para melhorar a pesquisa contextual. Formatos aceitos: PDF, TXT, DOC, DOCX, JSON e CSV.
                     </p>
                     <FileUpload
                         vectorStoreId={vector_store_id}

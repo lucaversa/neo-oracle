@@ -9,12 +9,24 @@ interface FileUploadProps {
     onUploadSuccess: () => void;
 }
 
+interface VectorStoreFile {
+    id: string;
+    filename: string;
+    created_at: number;
+    bytes: number;
+}
+
 export default function FileUpload({ vectorStoreId, onUploadSuccess }: FileUploadProps) {
     const [dragActive, setDragActive] = useState<boolean>(false);
     const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
     const [uploading, setUploading] = useState<boolean>(false);
     const [error, setError] = useState<string | null>(null);
     const [uploadProgress, setUploadProgress] = useState<number>(0);
+    const [replaceMode, setReplaceMode] = useState<boolean>(false);
+    const [showFileSelector, setShowFileSelector] = useState<boolean>(false);
+    const [existingFiles, setExistingFiles] = useState<VectorStoreFile[]>([]);
+    const [selectedFileToReplace, setSelectedFileToReplace] = useState<string>('');
+    const [loadingFiles, setLoadingFiles] = useState<boolean>(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     // Manipuladores de eventos de arrastar e soltar
@@ -50,6 +62,56 @@ export default function FileUpload({ vectorStoreId, onUploadSuccess }: FileUploa
     const onButtonClick = () => {
         if (fileInputRef.current) {
             fileInputRef.current.click();
+        }
+    };
+
+    // Buscar arquivos existentes na vector store
+    const fetchExistingFiles = async () => {
+        setLoadingFiles(true);
+        setError(null);
+        
+        try {
+            const response = await fetch(`/api/admin/vector-stores/${vectorStoreId}/files`);
+            if (!response.ok) {
+                throw new Error('Erro ao buscar arquivos existentes');
+            }
+            
+            const data = await response.json();
+            setExistingFiles(data.data || []);
+        } catch (err) {
+            console.error('Erro ao buscar arquivos:', err);
+            setError('Erro ao carregar lista de arquivos existentes');
+        } finally {
+            setLoadingFiles(false);
+        }
+    };
+
+    // Excluir arquivo da vector store
+    const deleteFile = async (fileId: string) => {
+        try {
+            const response = await fetch(`/api/admin/files/${fileId}`, {
+                method: 'DELETE'
+            });
+
+            if (!response.ok) {
+                throw new Error('Erro ao excluir arquivo');
+            }
+
+            return true;
+        } catch (err) {
+            console.error('Erro ao excluir arquivo:', err);
+            throw new Error('Erro ao excluir arquivo');
+        }
+    };
+
+    // Manipular mudança do modo substituição
+    const handleReplaceModeChange = (enabled: boolean) => {
+        setReplaceMode(enabled);
+        setShowFileSelector(false);
+        setSelectedFileToReplace('');
+        
+        if (enabled) {
+            fetchExistingFiles();
         }
     };
 
@@ -107,17 +169,55 @@ export default function FileUpload({ vectorStoreId, onUploadSuccess }: FileUploa
     const handleUpload = async () => {
         if (selectedFiles.length === 0 || !vectorStoreId) return;
 
+        // Validar se modo substituição está ativo mas nenhum arquivo foi selecionado para substituir
+        if (replaceMode && !selectedFileToReplace) {
+            setError('Selecione um arquivo para substituir');
+            return;
+        }
+
         setUploading(true);
         setError(null);
         setUploadProgress(0);
 
         try {
+            // Se está no modo substituição, pedir confirmação e excluir arquivo primeiro
+            if (replaceMode && selectedFileToReplace) {
+                const fileToReplace = existingFiles.find(f => f.id === selectedFileToReplace);
+                
+                if (!fileToReplace) {
+                    throw new Error('Arquivo selecionado para substituição não encontrado');
+                }
+
+                // Pedir confirmação
+                const confirmDelete = window.confirm(
+                    `Tem certeza que deseja excluir o arquivo "${fileToReplace.filename}" e substitui-lo pelo novo arquivo?`
+                );
+
+                if (!confirmDelete) {
+                    setUploading(false);
+                    return;
+                }
+
+                // Excluir arquivo existente
+                console.log('Excluindo arquivo existente:', fileToReplace.filename);
+                setUploadProgress(25);
+                
+                try {
+                    await deleteFile(selectedFileToReplace);
+                    console.log(`Arquivo ${fileToReplace.filename} excluído com sucesso`);
+                } catch (err) {
+                    throw new Error(`Erro ao excluir arquivo existente: ${err instanceof Error ? err.message : 'Erro desconhecido'}`);
+                }
+            }
+
             // Upload sequencial dos arquivos
             for (let i = 0; i < selectedFiles.length; i++) {
                 const file = selectedFiles[i];
 
                 // Atualizar progresso
-                const currentProgress = Math.round(((i + 0.5) / selectedFiles.length) * 100);
+                const baseProgress = replaceMode ? 25 : 0;
+                const uploadProgress = 75 / selectedFiles.length;
+                const currentProgress = Math.round(baseProgress + ((i + 0.5) * uploadProgress));
                 setUploadProgress(currentProgress);
 
                 try {
@@ -137,6 +237,9 @@ export default function FileUpload({ vectorStoreId, onUploadSuccess }: FileUploa
             // Resetar estado
             if (!error) {
                 setSelectedFiles([]);
+                setReplaceMode(false);
+                setShowFileSelector(false);
+                setSelectedFileToReplace('');
             }
 
             // Chamar callback de sucesso
@@ -204,6 +307,77 @@ export default function FileUpload({ vectorStoreId, onUploadSuccess }: FileUploa
         <div style={{
             marginBottom: '24px'
         }}>
+            {/* Opção de substituição de arquivo */}
+            <div style={{
+                marginBottom: '16px',
+                padding: '12px',
+                backgroundColor: '#f8fafc',
+                borderRadius: '8px',
+                border: '1px solid #e2e8f0'
+            }}>
+                <label style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    fontSize: '14px',
+                    cursor: 'pointer'
+                }}>
+                    <input
+                        type="checkbox"
+                        checked={replaceMode}
+                        onChange={(e) => handleReplaceModeChange(e.target.checked)}
+                        style={{
+                            marginRight: '4px'
+                        }}
+                    />
+                    Substituir arquivo existente
+                </label>
+
+                {replaceMode && (
+                    <div style={{ marginTop: '12px' }}>
+                        {loadingFiles ? (
+                            <div style={{ 
+                                color: '#6b7280',
+                                fontSize: '14px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '8px'
+                            }}>
+                                <div style={{
+                                    width: '16px',
+                                    height: '16px',
+                                    border: '2px solid #e5e7eb',
+                                    borderTop: '2px solid #3b82f6',
+                                    borderRadius: '50%',
+                                    animation: 'spin 1s linear infinite'
+                                }}></div>
+                                Carregando arquivos...
+                            </div>
+                        ) : (
+                            <select
+                                value={selectedFileToReplace}
+                                onChange={(e) => setSelectedFileToReplace(e.target.value)}
+                                style={{
+                                    width: '100%',
+                                    padding: '8px 12px',
+                                    border: '1px solid #d1d5db',
+                                    borderRadius: '6px',
+                                    fontSize: '14px',
+                                    backgroundColor: 'white'
+                                }}
+                            >
+                                <option value="">Selecione um arquivo para substituir...</option>
+                                {existingFiles.map(file => (
+                                    <option key={file.id} value={file.id}>
+                                        {file.filename} ({Math.round(file.bytes / 1024)}KB)
+                                    </option>
+                                ))}
+                            </select>
+                        )}
+                    </div>
+                )}
+            </div>
+
             {/* Área de arrastar e soltar */}
             <div
                 onDragEnter={handleDrag}

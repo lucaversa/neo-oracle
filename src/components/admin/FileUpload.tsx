@@ -60,7 +60,8 @@ export default function FileUpload({ vectorStoreId, onUploadSuccess }: FileUploa
             'application/pdf',
             'text/plain',
             'application/msword',
-            'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'application/json'
         ];
 
         setError(null);
@@ -70,7 +71,7 @@ export default function FileUpload({ vectorStoreId, onUploadSuccess }: FileUploa
 
             // Verificar tipo de arquivo
             if (!allowedTypes.includes(file.type)) {
-                setError(`O arquivo "${file.name}" não é suportado. São aceitos apenas PDF, TXT, DOC ou DOCX.`);
+                setError(`O arquivo "${file.name}" não é suportado. São aceitos apenas PDF, TXT, DOC, DOCX ou JSON.`);
                 continue;
             }
 
@@ -250,7 +251,7 @@ export default function FileUpload({ vectorStoreId, onUploadSuccess }: FileUploa
                     ref={fileInputRef}
                     type="file"
                     onChange={handleChange}
-                    accept=".pdf,.txt,.doc,.docx"
+                    accept=".pdf,.txt,.doc,.docx,.json"
                     multiple
                     style={{ display: 'none' }}
                 />
@@ -317,6 +318,23 @@ export default function FileUpload({ vectorStoreId, onUploadSuccess }: FileUploa
                             <polyline points="14 2 14 8 20 8"></polyline>
                         </svg>
                         DOC/DOCX
+                    </div>
+                    <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        padding: '8px 12px',
+                        backgroundColor: '#e3f2fd',
+                        borderRadius: '6px',
+                        fontSize: '14px',
+                        fontWeight: '500',
+                        color: '#1565c0'
+                    }}>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"></path>
+                            <polyline points="14 2 14 8 20 8"></polyline>
+                        </svg>
+                        JSON
                     </div>
                 </div>
             </div>

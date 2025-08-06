@@ -23,8 +23,8 @@ function convertCsvToJson(csvContent: string): string {
         }
 
         // Transformar os dados para o formato desejado
-        const transformedData = parsed.data.map((row: any) => {
-            const transformedRow: any = {};
+        const transformedData = parsed.data.map((row: Record<string, unknown>) => {
+            const transformedRow: Record<string, unknown> = {};
             
             for (const [key, value] of Object.entries(row)) {
                 if (key === 'Convênios EXCLUÍDOS') {

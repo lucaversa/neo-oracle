@@ -1,5 +1,51 @@
 // src/app/api/admin/files/route.ts
 import { NextRequest, NextResponse } from 'next/server';
+import Papa from 'papaparse';
+
+// Função para converter CSV em JSON
+function convertCsvToJson(csvContent: string): string {
+    try {
+        const parsed = Papa.parse(csvContent, {
+            header: true,
+            skipEmptyLines: true,
+            transformHeader: (header: string) => {
+                // Tratar o cabeçalho especial "Convênios EXCLUÍDOS/NÃO ACEITOS"
+                if (header.includes('EXCLUÍDOS') || header.includes('NÃO ACEITOS')) {
+                    return 'Convênios EXCLUÍDOS';
+                }
+                return header.trim();
+            }
+        });
+
+        if (parsed.errors.length > 0) {
+            console.error('Erros no parsing do CSV:', parsed.errors);
+            throw new Error('Erro ao processar arquivo CSV');
+        }
+
+        // Transformar os dados para o formato desejado
+        const transformedData = parsed.data.map((row: any) => {
+            const transformedRow: any = {};
+            
+            for (const [key, value] of Object.entries(row)) {
+                if (key === 'Convênios EXCLUÍDOS') {
+                    // Criar objeto aninhado para convênios
+                    transformedRow['Convênios EXCLUÍDOS'] = {
+                        'NÃO ACEITOS': value as string
+                    };
+                } else {
+                    transformedRow[key] = value;
+                }
+            }
+            
+            return transformedRow;
+        });
+
+        return JSON.stringify(transformedData, null, 2);
+    } catch (error) {
+        console.error('Erro na conversão CSV para JSON:', error);
+        throw new Error('Erro ao converter CSV para JSON');
+    }
+}
 
 // GET endpoint para listar arquivos
 export async function GET(request: NextRequest) {
@@ -82,24 +128,48 @@ export async function POST(request: NextRequest) {
         });
 
         // Verificar tipo de arquivo
-        const allowedTypes = ['application/pdf', 'text/plain', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/json'];
+        const allowedTypes = ['application/pdf', 'text/plain', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/json', 'text/csv'];
         const fileType = file.type;
 
         if (!allowedTypes.includes(fileType)) {
             return NextResponse.json({
                 error: 'Tipo de arquivo não suportado',
-                details: 'São aceitos apenas arquivos PDF, TXT, DOC, DOCX ou JSON'
+                details: 'São aceitos apenas arquivos PDF, TXT, DOC, DOCX, JSON ou CSV'
             }, { status: 400 });
         }
 
         // Obter dados do arquivo como ArrayBuffer
         const fileArrayBuffer = await file.arrayBuffer();
-        const fileBuffer = Buffer.from(fileArrayBuffer);
+        let fileBuffer = Buffer.from(fileArrayBuffer);
+        let finalFileName = file.name;
+        let finalFileType = file.type;
+
+        // Se for CSV, converter para JSON
+        if (fileType === 'text/csv') {
+            try {
+                console.log('Detectado arquivo CSV, convertendo para JSON...');
+                const csvContent = fileBuffer.toString('utf-8');
+                const jsonContent = convertCsvToJson(csvContent);
+                
+                // Criar novo buffer com conteúdo JSON
+                fileBuffer = Buffer.from(jsonContent, 'utf-8');
+                finalFileName = file.name.replace(/\.csv$/i, '.json');
+                finalFileType = 'application/json';
+                
+                console.log(`Arquivo CSV convertido: ${file.name} → ${finalFileName}`);
+            } catch (conversionError) {
+                console.error('Erro na conversão de CSV para JSON:', conversionError);
+                return NextResponse.json({
+                    error: 'Erro ao processar arquivo CSV',
+                    details: conversionError instanceof Error ? conversionError.message : 'Erro desconhecido na conversão'
+                }, { status: 400 });
+            }
+        }
 
         // Criar um novo FormData para a requisição da API OpenAI
         const openaiFormData = new FormData();
-        const blob = new Blob([fileBuffer], { type: file.type });
-        openaiFormData.append('file', blob, file.name);
+        const blob = new Blob([fileBuffer], { type: finalFileType });
+        openaiFormData.append('file', blob, finalFileName);
         openaiFormData.append('purpose', purpose as string);
 
         console.log('Enviando arquivo para a API OpenAI com purpose:', purpose);

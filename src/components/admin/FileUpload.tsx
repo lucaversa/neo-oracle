@@ -23,7 +23,6 @@ export default function FileUpload({ vectorStoreId, onUploadSuccess }: FileUploa
     const [error, setError] = useState<string | null>(null);
     const [uploadProgress, setUploadProgress] = useState<number>(0);
     const [replaceMode, setReplaceMode] = useState<boolean>(false);
-    const [showFileSelector, setShowFileSelector] = useState<boolean>(false);
     const [existingFiles, setExistingFiles] = useState<VectorStoreFile[]>([]);
     const [selectedFileToReplace, setSelectedFileToReplace] = useState<string>('');
     const [loadingFiles, setLoadingFiles] = useState<boolean>(false);
@@ -107,7 +106,6 @@ export default function FileUpload({ vectorStoreId, onUploadSuccess }: FileUploa
     // Manipular mudança do modo substituição
     const handleReplaceModeChange = (enabled: boolean) => {
         setReplaceMode(enabled);
-        setShowFileSelector(false);
         setSelectedFileToReplace('');
         
         if (enabled) {
@@ -238,7 +236,6 @@ export default function FileUpload({ vectorStoreId, onUploadSuccess }: FileUploa
             if (!error) {
                 setSelectedFiles([]);
                 setReplaceMode(false);
-                setShowFileSelector(false);
                 setSelectedFileToReplace('');
             }
 
